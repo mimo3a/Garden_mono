@@ -44,4 +44,20 @@ public class SensorController {
         return measurementRepository
                 .findTop5BySensorAndTypeOrderByTimestampDesc(sensor, "temperature");
     }
+
+    @PutMapping("/{deviceId}")
+    public Sensor updateSensor(@PathVariable Integer deviceId, @RequestBody Sensor body) {
+        Sensor sensor = sensorRepository.findByDeviceId(deviceId)
+                .orElseThrow(() -> new RuntimeException("Sensor not found"));
+        if (body.getName() != null) sensor.setName(body.getName());
+        if (body.getLocation() != null) sensor.setLocation(body.getLocation());
+        return sensorRepository.save(sensor);
+    }
+
+    @DeleteMapping("/{deviceId}")
+    public void deleteSensor(@PathVariable Integer deviceId) {
+        Sensor sensor = sensorRepository.findByDeviceId(deviceId)
+                .orElseThrow(() -> new RuntimeException("Sensor not found"));
+        sensorRepository.delete(sensor);
+    }
 }
