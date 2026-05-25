@@ -1,0 +1,34 @@
+name: ESP32 Build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ESP/**'
+      - '.github/workflows/esp32-build.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      - name: Build ESP32 firmware
+        working-directory: ESP
+        run: pio run
+
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: esp32-firmware
+          path: ESP/.pio/build/**/firmware.bin
+          retention-days: 30

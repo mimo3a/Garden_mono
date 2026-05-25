@@ -1,0 +1,33 @@
+name: STM32 Build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'STM/**'
+      - '.github/workflows/stm32-build.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ARM GCC toolchain
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi
+
+      - name: Build STM32 firmware
+        working-directory: STM
+        run: make
+
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stm32-firmware
+          path: |
+            STM/build/*.bin
+            STM/build/*.hex
+          retention-days: 30
