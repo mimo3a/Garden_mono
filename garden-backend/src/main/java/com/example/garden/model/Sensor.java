@@ -11,6 +11,7 @@ public class Sensor {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "sensor_id", nullable = false)
     private Long id;
 
     @Column(unique = true)
@@ -19,4 +20,7 @@ public class Sensor {
     private String location;
 
     private String name;
+
+    @OneToMany(mappedBy = "sensor", cascade = CascadeType.ALL, orphanRemoval = true)
+    private java.util.List<Measurement> measurements;
 }
