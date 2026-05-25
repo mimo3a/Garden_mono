@@ -1,0 +1,55 @@
+services:
+  backend:
+    image: ghcr.io/mimo3a/garden-backend:latest
+    container_name: garden-backend
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/garden
+      SPRING_DATASOURCE_USERNAME: garden
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
+      MQTT_BROKER: tcp://mqtt:1883
+    depends_on:
+      - db
+      - mqtt
+    ports:
+      - "8083:8083"
+    restart: unless-stopped
+
+  frontend:
+    image: ghcr.io/mimo3a/garden-frontend:latest
+    container_name: garden-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  db:
+    image: postgres:16
+    container_name: garden-db
+    environment:
+      POSTGRES_DB: garden
+      POSTGRES_USER: garden
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  mqtt:
+    image: eclipse-mosquitto
+    container_name: garden-mqtt
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - ./mosquitto_passwd:/mosquitto/config/mosquitto_passwd
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+
+networks:
+  default:
+    external:
+      name: mimozalab-network
