@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'garden-frontend/**'
+      - 'docker-compose.yml'
       - '.github/workflows/frontend-deploy.yml'
 
 jobs:
@@ -35,6 +36,15 @@ jobs:
           tags: ghcr.io/mimo3a/garden-frontend:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Copy docker-compose.yml to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.HETZNER_HOST }}
+          username: ${{ secrets.HETZNER_USER }}
+          key: ${{ secrets.HETZNER_SSH_KEY }}
+          source: docker-compose.yml
+          target: /srv/projects/garden/backend/
 
       - name: Deploy to Hetzner
         uses: appleboy/ssh-action@v1
