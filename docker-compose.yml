@@ -1,19 +1,4 @@
 services:
-  caddy:
-    image: caddy:2-alpine
-    container_name: garden-caddy
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      - frontend
-      - backend
-    restart: unless-stopped
-
   backend:
     image: ghcr.io/mimo3a/garden-backend:latest
     container_name: garden-backend
@@ -26,12 +11,14 @@ services:
       - db
       - mqtt
     ports:
-      - "8083:8083"
+      - "127.0.0.1:8083:8083"
     restart: unless-stopped
 
   frontend:
     image: ghcr.io/mimo3a/garden-frontend:latest
     container_name: garden-frontend
+    ports:
+      - "127.0.0.1:3001:80"
     depends_on:
       - backend
     restart: unless-stopped
@@ -45,8 +32,6 @@ services:
       POSTGRES_PASSWORD: secret
     ports:
       - "127.0.0.1:5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
     restart: unless-stopped
 
   mqtt:
@@ -61,8 +46,6 @@ services:
 
 volumes:
   pgdata:
-  caddy_data:
-  caddy_config:
 
 networks:
   default:
