@@ -1,11 +1,26 @@
 services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: garden-caddy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+      - backend
+    restart: unless-stopped
+
   backend:
     image: ghcr.io/mimo3a/garden-backend:latest
     container_name: garden-backend
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/garden
       SPRING_DATASOURCE_USERNAME: garden
-      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
+      SPRING_DATASOURCE_PASSWORD: secret
       MQTT_BROKER: tcp://mqtt:1883
     depends_on:
       - db
@@ -17,8 +32,6 @@ services:
   frontend:
     image: ghcr.io/mimo3a/garden-frontend:latest
     container_name: garden-frontend
-    ports:
-      - "80:80"
     depends_on:
       - backend
     restart: unless-stopped
@@ -29,7 +42,7 @@ services:
     environment:
       POSTGRES_DB: garden
       POSTGRES_USER: garden
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_PASSWORD: secret
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
@@ -48,6 +61,8 @@ services:
 
 volumes:
   pgdata:
+  caddy_data:
+  caddy_config:
 
 networks:
   default:
