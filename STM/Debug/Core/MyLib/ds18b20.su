@@ -1,0 +1,10 @@
+../Core/MyLib/ds18b20.c:14:6:DS18B20_DWT_Init	4	static
+../Core/MyLib/ds18b20.c:26:6:DS18B20_Delay_us	32	static
+../Core/MyLib/ds18b20.c:36:9:DS18B20_Reset	32	static
+../Core/MyLib/ds18b20.c:64:6:DS18B20_WriteBit	32	static
+../Core/MyLib/ds18b20.c:90:9:DS18B20_ReadBit	32	static
+../Core/MyLib/ds18b20.c:118:6:DS18B20_WriteByte	24	static
+../Core/MyLib/ds18b20.c:129:9:DS18B20_ReadByte	16	static
+../Core/MyLib/ds18b20.c:144:9:DS18B20_CRC8	24	static
+../Core/MyLib/ds18b20.c:164:9:DS18B20_ReadTemperature	40	static
+../Core/MyLib/ds18b20.c:219:9:DS18B20_ReadTemperatureInt	40	static
