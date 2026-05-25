@@ -12,7 +12,7 @@
 - `soil` — уже в % (0–100), калибровка: dry=25000, wet=12000
 
 ### ESP32 (DOIT DevKit V1)
-- TFT дисплей (TFT_eSPI)
+- TFT    дисплей (TFT_eSPI)
 - Читает UART от STM32
 - Публикует в MQTT брокер на топик `sensors/{deviceId}/data`
 - **Текущий статус**: код-placeholder, нужно переписать (сейчас шлёт HTTP POST с захардкоженными значениями)
