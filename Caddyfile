@@ -1,8 +1,0 @@
-mimozalab.com {
-    reverse_proxy /api/* backend:8083
-    reverse_proxy * frontend:80
-}
-
-innbalance.mimozalab.com {
-    reverse_proxy * innbalance-backend:8080
-}
