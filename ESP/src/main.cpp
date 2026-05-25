@@ -1,140 +1,118 @@
 #include <Arduino.h>
-#include <WiFi.h>
-#include <HTTPClient.h>
-#include <WiFiClientSecure.h>
 #include <TFT_eSPI.h>
+#include <WiFi.h>
+#include <PubSubClient.h>
 
 const char* WIFI_SSID = "REDACTED_WIFI_SSID";
 const char* WIFI_PASS = "REDACTED_WIFI_PASSWORD";
-const char* SERVER_URL = "https://mimozalab.com/api/measurements";
 
+const char* MQTT_SERVER = "REDACTED_MQTT_HOST";
+const int   MQTT_PORT   = 1883;
+const char* MQTT_USER   = "esp32";
+const char* MQTT_PASS   = "REDACTED_MQTT_PASSWORD";
+
+const int DEVICE_ID = 1;
+
+WiFiClient espClient;
+PubSubClient client(espClient);
 TFT_eSPI tft = TFT_eSPI();
 
+#define RXD2 16
+#define TXD2 17
 
-// ---------- DISPLAY HELPERS ----------
-void screenHeader(const char* title)
+// -------------------- DISPLAY --------------------
+
+void screenHeader(const String& text)
 {
   tft.fillScreen(TFT_BLACK);
   tft.setTextColor(TFT_GREEN, TFT_BLACK);
   tft.setTextSize(2);
-  tft.setCursor(0,0);
-  tft.println(title);
-  tft.drawFastHLine(0,20,240,TFT_GREEN);
-  tft.setTextSize(2);
+  tft.setCursor(10, 10);
+  tft.println(text);
 }
 
-void screenLine(String txt, int y)
+void screenLine(const String& text, int y)
 {
-  tft.setCursor(0,y);
-  tft.setTextColor(TFT_WHITE,TFT_BLACK);
-  tft.println(txt);
+  tft.setCursor(10, y);
+  tft.println(text);
 }
 
+// -------------------- WIFI --------------------
 
-// ---------- HTTP POST ----------
-int sendMeasurement(float temperature, float humidity)
+void connectWiFi()
 {
-  String json =
-    "{"
-    "\"sensorId\":1,"
-    "\"temperature\":" + String(temperature, 1) + ","
-    "\"humidity\":" + String(humidity, 1) + ","
-    "\"timestamp\":\"2026-01-06T18:00:00\""
-    "}";
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
 
-  WiFiClientSecure client;
-  client.setInsecure();
-  HTTPClient http;
-
-  http.begin(client, SERVER_URL);
-  http.addHeader("Content-Type","application/json");
-
-  int code = http.POST(json);
-
-  http.end();
-  return code;
-}
-
-
-// ---------- GET CHECK ----------
-int checkServerGet()
-{
-  WiFiClientSecure client;
-  client.setInsecure();
-  HTTPClient http;
-
-  http.begin(client, SERVER_URL);
-  int code = http.GET();
-  http.end();
-
-  return code;
-}
-
-
-// ---------- SETUP ----------
-void setup()
-{
-  Serial.begin(115200);
-
-  tft.init();
-  tft.setRotation(0);
-  
-  // Turn on backlight
-  pinMode(TFT_BL, OUTPUT);
-  digitalWrite(TFT_BL, HIGH);
-  
-  screenHeader("ESP Monitor");
-
-  screenLine("Connecting WiFi...",30);
-
-  WiFi.begin(WIFI_SSID,WIFI_PASS);
-
-  while(WiFi.status()!=WL_CONNECTED)
-  {
-    delay(400);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
     Serial.print(".");
   }
 
-  screenLine("WiFi OK",60);
-  screenLine(WiFi.localIP().toString(),90);
-
-  delay(2000);
+  screenLine("WiFi OK", 40);
 }
 
+// -------------------- MQTT --------------------
 
-// ---------- LOOP ----------
+void connectMQTT()
+{
+  while (!client.connected()) {
+
+    String clientId = "esp32-" + String(DEVICE_ID);
+
+    if (client.connect(clientId.c_str(), MQTT_USER, MQTT_PASS)) {
+      screenLine("MQTT OK", 70);
+    } else {
+      delay(2000);
+    }
+  }
+}
+
+// -------------------- SETUP --------------------
+
+void setup()
+{
+  Serial.begin(115200);
+  Serial2.begin(115200, SERIAL_8N1, RXD2, TXD2);
+
+  tft.init();
+  tft.setRotation(1);
+  screenHeader("SMART GARDEN");
+
+  connectWiFi();
+
+  client.setServer(MQTT_SERVER, MQTT_PORT);
+  connectMQTT();
+}
+
+// -------------------- LOOP --------------------
+
 void loop()
 {
-  if(WiFi.status()!=WL_CONNECTED)
-  {
-    screenHeader("ERROR");
-    screenLine("WiFi Lost",60);
-    delay(2000);
-    return;
+  if (!client.connected()) {
+    connectMQTT();
   }
 
-  float temperature = 23.6;
-  float humidity = 48.2;
+  client.loop();
 
-  // --- GET ---
-  int getCode = checkServerGet();
+  if (Serial2.available()) {
 
-  screenHeader("SERVER CHECK");
-  screenLine("GET code:",40);
-  screenLine(String(getCode),70);
+    String line = Serial2.readStringUntil('\n');
+    line.trim();
 
-  delay(1500);
+    if (line.length() > 5) {
 
-  // --- POST ---
-  int postCode = sendMeasurement(temperature, humidity);
+      screenHeader("DATA");
+      screenLine(line, 40);
 
-  screenHeader("POST RESULT");
+      String topic = "smartgarden/" + String(DEVICE_ID) + "/data";
 
-  screenLine("Temp: "+String(temperature),40);
-  screenLine("Hum : "+String(humidity),70);
+      bool ok = client.publish(topic.c_str(), line.c_str(), false);
 
-  screenLine("HTTP:",120);
-  screenLine(String(postCode),150);
-
-  delay(5000);
+      if (ok) {
+        screenLine("MQTT SENT", 120);
+      } else {
+        screenLine("MQTT FAIL", 160);
+      }
+    }
+  }
 }
