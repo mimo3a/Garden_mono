@@ -1,5 +1,6 @@
 package com.example.garden.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -21,6 +22,7 @@ public class Sensor {
 
     private String name;
 
+    @JsonIgnore
     @OneToMany(mappedBy = "sensor", cascade = CascadeType.ALL, orphanRemoval = true)
     private java.util.List<Measurement> measurements;
 }
