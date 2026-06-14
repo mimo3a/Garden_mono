@@ -48,6 +48,10 @@ void connectWiFi()
     Serial.print(".");
   }
 
+  Serial.println();
+  Serial.println("WiFi connected!");
+  Serial.println(WiFi.localIP());
+
   screenLine("WiFi OK", 40);
 }
 
@@ -60,8 +64,11 @@ void connectMQTT()
     String clientId = "esp32-" + String(DEVICE_ID);
 
     if (client.connect(clientId.c_str(), MQTT_USER, MQTT_PASS)) {
+
+      Serial.println("MQTT connected");
       screenLine("MQTT OK", 70);
     } else {
+      Serial.println("MQTT connection failed");
       delay(2000);
     }
   }
@@ -99,6 +106,9 @@ void loop()
     String line = Serial2.readStringUntil('\n');
     line.trim();
 
+    Serial.print("UART: ");
+    Serial.println(line);
+
     if (line.length() > 5) {
 
       screenHeader("DATA");
@@ -110,8 +120,10 @@ void loop()
 
       if (ok) {
         screenLine("MQTT SENT", 120);
+        Serial.println("MQTT SENT");
       } else {
         screenLine("MQTT FAIL", 160);
+        Serial.println("MQTT FAIL");
       }
     }
   }
