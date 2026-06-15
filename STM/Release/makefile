@@ -61,8 +61,8 @@ all: main-build
 main-build: F103First.elf secondary-outputs
 
 # Tool invocations
-F103First.elf F103First.map: $(OBJS) $(USER_OBJS) C:\STM\Workspace\F103First\STM32F103C8TX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "F103First.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m3 -T"C:\STM\Workspace\F103First\STM32F103C8TX_FLASH.ld" --specs=nosys.specs -Wl,-Map="F103First.map" -Wl,--gc-sections -static "-u _printf_float" --specs=nano.specs -mfloat-abi=soft -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+F103First.elf F103First.map: $(OBJS) $(USER_OBJS) C:\Garden\Workspace\STM\STM32F103C8TX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "F103First.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m3 -T"C:\Garden\Workspace\STM\STM32F103C8TX_FLASH.ld" --specs=nosys.specs -Wl,-Map="F103First.map" -Wl,--gc-sections -static "-u _printf_float" --specs=nano.specs -mfloat-abi=soft -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 

@@ -1,0 +1,12 @@
+../Core/MyLib/ads1115.c:5:17:ADS1115_BuildConfig	24	static
+../Core/MyLib/ads1115.c:97:14:ADS1115_GetFSR	16	static
+../Core/MyLib/ads1115.c:111:19:ADS1115_Init	24	static
+../Core/MyLib/ads1115.c:128:19:ADS1115_IsReady	16	static
+../Core/MyLib/ads1115.c:136:19:ADS1115_WriteRegister	32	static
+../Core/MyLib/ads1115.c:149:19:ADS1115_ReadRegister	40	static
+../Core/MyLib/ads1115.c:169:19:ADS1115_StartSingleConversion	24	static
+../Core/MyLib/ads1115.c:180:19:ADS1115_ReadRaw	24	static
+../Core/MyLib/ads1115.c:196:10:ADS1115_GetConversionDelayMs	16	static
+../Core/MyLib/ads1115.c:215:19:ADS1115_ReadChannelRaw	32	static
+../Core/MyLib/ads1115.c:231:7:ADS1115_RawToVoltage	24	static
+../Core/MyLib/ads1115.c:243:19:ADS1115_ReadChannelVoltage	32	static
