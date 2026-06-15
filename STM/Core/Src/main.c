@@ -99,30 +99,40 @@ void MeasureAndDisplay() {
     raw3 = MoistureSensor_Read(ADS1115_CHANNEL_2);
     raw4 = MoistureSensor_Read(ADS1115_CHANNEL_3);
 
-    soil1 = Moisture_ToPercent(raw1, 25000, 12000);
-    soil2 = Moisture_ToPercent(raw2, 25000, 12000);
-    soil3 = Moisture_ToPercent(raw3, 25000, 12000);
-    soil4 = Moisture_ToPercent(raw4, 25000, 12000);
+    soil1 = Moisture_ToPercent(raw1, 17300, 7100);
+    soil2 = Moisture_ToPercent(raw2, 17300, 7100);
+    soil3 = Moisture_ToPercent(raw3, 17300, 7100);
+    soil4 = Moisture_ToPercent(raw4, 17300, 7100);
 
     uint8_t result = DS18B20_ReadTemperatureInt(&temp_integer, &temp_fraction);
 
-    if (result != DS18B20_OK) {
-        return;
-    }
-
     char uart_buffer[256];
 
-    snprintf(uart_buffer,
-             sizeof(uart_buffer),
-             "{\"deviceId\":1,"
-             "\"temperature\":%d.%02d,"
-             "\"soil\":[%lu,%lu,%lu,%lu]}\r\n",
-             temp_integer,
-             temp_fraction,
-             soil1,
-             soil2,
-             soil3,
-             soil4);
+    if(result == DS18B20_OK)
+    {
+        snprintf(uart_buffer,
+            sizeof(uart_buffer),
+            "{\"deviceId\":1,"
+            "\"temperature\":%d.%02d,"
+            "\"soil\":[%lu,%lu,%lu,%lu]}\r\n",
+            temp_integer,
+            temp_fraction,
+            soil1, soil2, soil3, soil4);
+    }
+    else
+    {
+        snprintf(uart_buffer,
+            sizeof(uart_buffer),
+            "{\"deviceId\":1,"
+            "\"temperature\":null,"
+            "\"soil\":[%lu,%lu,%lu,%lu]}\r\n",
+            soil1, soil2, soil3, soil4);
+    }
+
+//    snprintf(uart_buffer,
+//             sizeof(uart_buffer),
+//             "RAW: %lu %lu %lu %lu\r\n",
+//             raw1, raw2, raw3, raw4);
 
     HAL_UART_Transmit(&huart1,
                       (uint8_t*)uart_buffer,
@@ -182,7 +192,7 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_I2C1_Init();
-//  MX_ADC1_Init();
+  //MX_ADC1_Init(); // Убираем инициализацию ADC, так как используем ADS1115
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
 
@@ -224,26 +234,11 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1){
-//     char test[] = "HELLO\n";
 
-// HAL_UART_Transmit(
-//     & huart1,
-//     (uint8_t *) test,
-//     strlen(test),
-//     HAL_MAX_DELAY
-// );
-// HAL_Delay(1000);
-
-    // Измеряем температуру при нажатии кнопки
-    // 
+    
      MeasureAndDisplay();   // измеряем и отправляем
     HAL_Delay(10000);      // 10 секунд пауза
-
-     
-    
-    
-    
-    
+  
     
     /* USER CODE END WHILE */
 
