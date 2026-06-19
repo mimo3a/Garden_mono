@@ -43,7 +43,7 @@ I2C_HandleTypeDef hi2c1;
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
-uint8_t measure_flag = 0;
+volatile uint8_t measure_flag = 0;
 volatile uint32_t last_button_press = 0;
 uint32_t adc_value = 0;
 ADS1115_t ads;
@@ -58,9 +58,8 @@ uint8_t rx_index = 0;
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_I2C1_Init(void);
-//static void MX_ADC1_Init(void);
+static void MX_ADC1_Init(void);
 static void MX_USART1_UART_Init(void);
-
 /* USER CODE BEGIN PFP */
 
 uint8_t Moisture_ToPercent(uint32_t raw, uint32_t dry, uint32_t wet);
@@ -186,7 +185,7 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_I2C1_Init();
-  //MX_ADC1_Init(); // Убираем инициализацию ADC, так как используем ADS1115
+  MX_ADC1_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
 
@@ -297,23 +296,47 @@ void SystemClock_Config(void)
   * @param None
   * @retval None
   */
+static void MX_ADC1_Init(void)
+{
 
-//  /* USER CODE BEGIN ADC1_Init 0 */
+  /* USER CODE BEGIN ADC1_Init 0 */
 //
-//  /* USER CODE END ADC1_Init 0 */
+  /* USER CODE END ADC1_Init 0 */
 
-//
-//  /* USER CODE BEGIN ADC1_Init 1 */
-//
-//  /* USER CODE END ADC1_Init 1 */
-//
-//  /** Common config
+  ADC_ChannelConfTypeDef sConfig = {0};
 
-//  /* USER CODE BEGIN ADC1_Init 2 */
+  /* USER CODE BEGIN ADC1_Init 1 */
 //
-//  /* USER CODE END ADC1_Init 2 */
+  /* USER CODE END ADC1_Init 1 */
+
+  /** Common config
+  */
+  hadc1.Instance = ADC1;
+  hadc1.Init.ScanConvMode = ADC_SCAN_DISABLE;
+  hadc1.Init.ContinuousConvMode = DISABLE;
+  hadc1.Init.DiscontinuousConvMode = DISABLE;
+  hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+  hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+  hadc1.Init.NbrOfConversion = 1;
+  if (HAL_ADC_Init(&hadc1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Regular Channel
+  */
+  sConfig.Channel = ADC_CHANNEL_0;
+  sConfig.Rank = ADC_REGULAR_RANK_1;
+  sConfig.SamplingTime = ADC_SAMPLETIME_239CYCLES_5;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN ADC1_Init 2 */
 //
-//}
+  /* USER CODE END ADC1_Init 2 */
+
+}
 
 /**
   * @brief I2C1 Initialization Function
@@ -446,7 +469,11 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
     if (huart->Instance == USART1)
     {
-        if (rx_data == '\n')
+        if (rx_data == '\r')
+        {
+            /* Ignore CR so both "MEASURE\n" and "MEASURE\r\n" work. */
+        }
+        else if (rx_data == '\n')
         {
             rx_buffer[rx_index] = '\0';
 
@@ -465,6 +492,14 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
             }
         }
 
+        HAL_UART_Receive_IT(&huart1, &rx_data, 1);
+    }
+}
+
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+    if (huart->Instance == USART1)
+    {
         HAL_UART_Receive_IT(&huart1, &rx_data, 1);
     }
 }
