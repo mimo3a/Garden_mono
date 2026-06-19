@@ -47,6 +47,11 @@ uint8_t measure_flag = 0;
 volatile uint32_t last_button_press = 0;
 uint32_t adc_value = 0;
 ADS1115_t ads;
+
+uint8_t rx_data;
+char rx_buffer[32];
+uint8_t rx_index = 0;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -55,7 +60,9 @@ static void MX_GPIO_Init(void);
 static void MX_I2C1_Init(void);
 //static void MX_ADC1_Init(void);
 static void MX_USART1_UART_Init(void);
+
 /* USER CODE BEGIN PFP */
+
 uint8_t Moisture_ToPercent(uint32_t raw, uint32_t dry, uint32_t wet);
 
 /* USER CODE END PFP */
@@ -129,10 +136,7 @@ void MeasureAndDisplay() {
             soil1, soil2, soil3, soil4);
     }
 
-//    snprintf(uart_buffer,
-//             sizeof(uart_buffer),
-//             "RAW: %lu %lu %lu %lu\r\n",
-//             raw1, raw2, raw3, raw4);
+
 
     HAL_UART_Transmit(&huart1,
                       (uint8_t*)uart_buffer,
@@ -149,16 +153,6 @@ uint8_t Moisture_ToPercent(uint32_t raw, uint32_t dry, uint32_t wet)
 }
 	
 
-
-
-//uint32_t MoistureSensor_Read(void) {
-//	HAL_ADC_Start(&hadc1);
-//	HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY);
-//	adc_value = HAL_ADC_GetValue(&hadc1);
-//	HAL_ADC_Stop(&hadc1);
-//
-//	return adc_value;
-//}
 /* USER CODE END 0 */
 
 /**
@@ -195,6 +189,8 @@ int main(void)
   //MX_ADC1_Init(); // Убираем инициализацию ADC, так как используем ADS1115
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+
+  HAL_UART_Receive_IT(&huart1, &rx_data, 1);
 
   ADS1115_Init(&ads, &hi2c1, ADS1115_ADDR_GND,
                ADS1115_PGA_4_096V,
@@ -236,8 +232,11 @@ int main(void)
   while (1){
 
     
-     MeasureAndDisplay();   // измеряем и отправляем
-    HAL_Delay(10000);      // 10 секунд пауза
+    if (measure_flag)
+    {
+        measure_flag = 0;
+        MeasureAndDisplay();
+    }
   
     
     /* USER CODE END WHILE */
@@ -298,42 +297,18 @@ void SystemClock_Config(void)
   * @param None
   * @retval None
   */
-//static void MX_ADC1_Init(void)
-//{
-//
+
 //  /* USER CODE BEGIN ADC1_Init 0 */
 //
 //  /* USER CODE END ADC1_Init 0 */
-//
-//  ADC_ChannelConfTypeDef sConfig = {0};
+
 //
 //  /* USER CODE BEGIN ADC1_Init 1 */
 //
 //  /* USER CODE END ADC1_Init 1 */
 //
 //  /** Common config
-//  */
-//  hadc1.Instance = ADC1;
-//  hadc1.Init.ScanConvMode = ADC_SCAN_DISABLE;
-//  hadc1.Init.ContinuousConvMode = DISABLE;
-//  hadc1.Init.DiscontinuousConvMode = DISABLE;
-//  hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
-//  hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
-//  hadc1.Init.NbrOfConversion = 1;
-//  if (HAL_ADC_Init(&hadc1) != HAL_OK)
-//  {
-//    Error_Handler();
-//  }
-//
-//  /** Configure Regular Channel
-//  */
-//  sConfig.Channel = ADC_CHANNEL_0;
-//  sConfig.Rank = ADC_REGULAR_RANK_1;
-//  sConfig.SamplingTime = ADC_SAMPLETIME_239CYCLES_5;
-//  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
-//  {
-//    Error_Handler();
-//  }
+
 //  /* USER CODE BEGIN ADC1_Init 2 */
 //
 //  /* USER CODE END ADC1_Init 2 */
@@ -467,7 +442,32 @@ static void MX_GPIO_Init(void)
   * @param  GPIO_Pin: Specifies the pins connected EXTI line
   * @retval None
   */
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+    if (huart->Instance == USART1)
+    {
+        if (rx_data == '\n')
+        {
+            rx_buffer[rx_index] = '\0';
 
+            if (strcmp(rx_buffer, "MEASURE") == 0)
+            {
+                measure_flag = 1;
+            }
+
+            rx_index = 0;
+        }
+        else
+        {
+            if (rx_index < sizeof(rx_buffer) - 1)
+            {
+                rx_buffer[rx_index++] = rx_data;
+            }
+        }
+
+        HAL_UART_Receive_IT(&huart1, &rx_data, 1);
+    }
+}
 /* USER CODE END 4 */
 
 /**
