@@ -20,6 +20,9 @@ TFT_eSPI tft = TFT_eSPI();
 #define RXD2 16
 #define TXD2 17
 
+const unsigned long MEASURE_INTERVAL_MS = 10000;
+unsigned long lastMeasureRequest = 0;
+
 // -------------------- DISPLAY --------------------
 
 void screenHeader(const String& text)
@@ -95,11 +98,19 @@ void setup()
 
 void loop()
 {
+  unsigned long now = millis();
+
   if (!client.connected()) {
     connectMQTT();
   }
 
   client.loop();
+
+  if (now - lastMeasureRequest >= MEASURE_INTERVAL_MS) {
+    lastMeasureRequest = now;
+    Serial2.print("MEASURE\n");
+    Serial.println("UART TX: MEASURE");
+  }
 
   if (Serial2.available()) {
 
