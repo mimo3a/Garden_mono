@@ -30,3 +30,5 @@
 		<nature>org.eclipse.cdt.managedbuilder.core.ScannerConfigNature</nature>
 	</natures>
 </projectDescription>
+
+powershell -ExecutionPolicy Bypass -File "C:\Deda\Programmierung\jupyter-watch.psl"
