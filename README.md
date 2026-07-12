@@ -101,3 +101,61 @@ docker logs -f garden-backend
 cd /srv/projects/garden/backend
 docker compose up -d --no-deps backend
 ```
+
+## Current hardware wiring and sleep cycle
+
+Power cycle:
+
+1. ESP32 wakes up by timer every 30 minutes, or by the manual wake button.
+2. ESP32 wakes STM32 with a pulse from `GPIO25` to STM32 `PA1`.
+3. STM32 measures sensors and sends one JSON line over UART.
+4. ESP32 receives the JSON, publishes it to MQTT, then enters deep sleep.
+5. STM32 enters STOP mode after the measurement.
+
+Required wiring:
+
+| Signal | ESP32 | STM32 / other side |
+|---|---|---|
+| STM32 wake | `GPIO25` | `PA1` |
+| Manual wake button | `GPIO33` | Button contact 1 |
+| Manual wake button GND | `GND` | Button contact 2 |
+| Common ground | `GND` | STM32 `GND` |
+
+Yes: one button contact goes to ESP32 `GPIO33`, the other button contact goes to `GND`.
+The code uses `INPUT_PULLUP`, so no external pull-up resistor is required for a basic button.
+
+STM32 CubeMX settings:
+
+- `PA1`: `GPIO_EXTI1`, rising edge, pull-down.
+- `EXTI1_IRQn`: enabled.
+- `PA3`: no interrupt; old STM32 button is not used for the main wake cycle.
+- RTC on STM32 is not required for the current 30-minute cycle; ESP32 owns the timer.
+
+## STM32 command-line build
+
+From PowerShell:
+
+```powershell
+cd C:\Garden\Workspace\STM
+powershell -ExecutionPolicy Bypass -File .\build.ps1 -Config Release -Clean
+```
+
+Firmware outputs:
+
+```text
+C:\Garden\Workspace\STM\build\cli\Release\F103First.elf
+C:\Garden\Workspace\STM\build\cli\Release\F103First.hex
+C:\Garden\Workspace\STM\build\cli\Release\F103First.bin
+```
+
+For STM32CubeProgrammer, select:
+
+```text
+C:\Garden\Workspace\STM\build\cli\Release\F103First.hex
+```
+
+If flashing the `.bin` instead, use start address:
+
+```text
+0x08000000
+```
