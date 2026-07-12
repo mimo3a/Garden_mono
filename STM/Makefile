@@ -37,6 +37,9 @@ BUILD_DIR = build
 # C sources
 C_SOURCES =  \
 Core/Src/main.c \
+Core/Src/moisture_sensor.c \
+Core/MyLib/ads1115.c \
+Core/MyLib/ds18b20.c \
 Core/MyLib/liquidcrystal_i2c.c \
 Core/Src/stm32f1xx_it.c \
 Core/Src/stm32f1xx_hal_msp.c \
@@ -52,13 +55,14 @@ Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_pwr.c \
 Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_flash.c \
 Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_flash_ex.c \
 Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_exti.c \
+Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_uart.c \
 Core/Src/system_stm32f1xx.c \
 Core/Src/sysmem.c \
 Core/Src/syscalls.c
 
 # ASM sources
 ASM_SOURCES =  \
-startup_stm32f103xb.s
+Core/Startup/startup_stm32f103c8tx.s
 
 # ASMM sources
 ASMM_SOURCES = 
@@ -141,7 +145,7 @@ CFLAGS += -MMD -MP -MF"$(@:%.o=%.d)"
 # LDFLAGS
 #######################################
 # link script
-LDSCRIPT = STM32F103XX_FLASH.ld
+LDSCRIPT = STM32F103C8TX_FLASH.ld
 
 # libraries
 LIBS = -lc -lm -lnosys 
