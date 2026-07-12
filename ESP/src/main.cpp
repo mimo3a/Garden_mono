@@ -23,10 +23,33 @@ TFT_eSPI tft = TFT_eSPI();
 #define WAKE_STM_PIN 25
 #define WAKE_BUTTON_PIN GPIO_NUM_33
 
+// Диагностический LED (внешний, через резистор на GND). Активный HIGH.
+// Пины 2 и 4 заняты TFT (DC/RST), поэтому берём GPIO 26 — свободен и
+// безопасен, RTC-домен deep_sleep его не трогает.
+#define DIAG_LED_PIN 26
+
 const uint64_t SLEEP_INTERVAL_US = 30ULL * 60ULL * 1000000ULL;
 const unsigned long WAKE_PULSE_MS = 100;
 const unsigned long MEASURE_TIMEOUT_MS = 20000;
 const unsigned long MQTT_FLUSH_MS = 500;
+
+// -------------------- DIAG LED --------------------
+
+// Мигает N раз с короткими импульсами. Схема:
+//   Проснулся                → 1
+//   UART от STM не пришёл    → 3
+//   MQTT публикация OK       → 1
+//   MQTT публикация FAIL     → 2
+void diagBlink(uint8_t count)
+{
+  for (uint8_t i = 0; i < count; i++) {
+    digitalWrite(DIAG_LED_PIN, HIGH);
+    delay(120);
+    digitalWrite(DIAG_LED_PIN, LOW);
+    delay(200);
+  }
+  delay(400);
+}
 
 // -------------------- DISPLAY --------------------
 
@@ -167,6 +190,10 @@ void setup()
   digitalWrite(WAKE_STM_PIN, LOW);
   pinMode((uint8_t)WAKE_BUTTON_PIN, INPUT_PULLUP);
 
+  pinMode(DIAG_LED_PIN, OUTPUT);
+  digitalWrite(DIAG_LED_PIN, LOW);
+  diagBlink(1);  // проснулся
+
   tft.init();
   tft.setRotation(1);
   screenHeader("SMART GARDEN");
@@ -191,13 +218,16 @@ void setup()
       screenLine("MQTT SENT", 120);
       Serial.print("MQTT SENT: ");
       Serial.println(topic);
+      diagBlink(1);  // отправлено на сервер
     } else {
       screenLine("MQTT FAIL", 120);
       Serial.println("MQTT FAIL");
+      diagBlink(2);  // MQTT провалился
     }
   } else {
     screenHeader("NO DATA");
     Serial.println("No valid STM32 JSON received before timeout");
+    diagBlink(3);  // UART от STM не пришёл
   }
 
   unsigned long flushUntil = millis() + MQTT_FLUSH_MS;
