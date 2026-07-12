@@ -136,6 +136,58 @@ Current hardware is a single STM32 board with **one** ADS1115 (4 moisture channe
 - The backend has effectively no test coverage (the `src/test/` tree is empty besides scaffolding) and `MqttMessageHandler` catches all exceptions and just `printStackTrace()`s — bad payloads silently no-op.
 - Comments in STM32 and ESP code are mixed Russian/English; keep that style if extending.
 
+## Firmware operational features
+
+### Flash-safe boot on STM32 (PA3 hold-to-recover)
+
+Because the firmware enters STOP mode almost immediately after each measurement, a normal SWD flash session can race the sleep and fail with `Error: failed to download Sector[0]` / `The core is locked up` in STM32CubeProgrammer. Two safeguards are in place:
+
+- `HAL_DBGMCU_EnableDBGStopMode()` is called at the top of `main()` — SWD stays alive across STOP so an *Under Reset* connection can still halt the CPU.
+- **PA3 hold-to-recover:** at boot, immediately after peripheral init, `main.c` reads PA3. If it's pulled LOW (button held), the MCU enters an infinite fast-blink loop on PC13 and never touches STOP / ADS / DS18B20. This is the safety net: any firmware — even if the app itself is broken — can be reflashed by holding the button.
+
+**Recovery procedure:**
+1. Hold PA3 button.
+2. Press RESET (or power-cycle) — keep the button held.
+3. PC13 LED blinks fast (~12 Hz) → safe-boot active.
+4. Flash normally in CubeProgrammer.
+5. Release button, press RESET → new firmware runs.
+
+**First-time bootstrap** (safe-boot not yet in flash): flash once using **BOOT0 = 1** jumper (system memory bootloader), then the button trap is available for every subsequent flash.
+
+### Diagnostic LEDs (sleep-cycle status)
+
+Both firmwares blink a single LED to trace what happened during each wake cycle. Patterns are timed 120 ms ON / 200 ms OFF, with a 400 ms gap between groups so `1+2` reads distinctly from `3`.
+
+**STM32 — built-in PC13** (active LOW, blinks are inverted-drive):
+| Event | Blinks |
+|---|---|
+| Woke, starting measurement | 1 |
+| `HAL_UART_Transmit` returned `HAL_OK` (2 s timeout) | 1 |
+| UART TX failed / timed out | 2 |
+
+**ESP32 — external LED on GPIO 26** (active HIGH, wire: GPIO 26 → resistor → LED anode → cathode → GND):
+| Event | Blinks |
+|---|---|
+| `setup()` entry after wake from deep sleep | 1 |
+| `client.publish()` returned `true` | 1 |
+| `client.publish()` returned `false` | 2 |
+| `readMeasurement()` timed out (no valid JSON from STM) | 3 |
+
+Pins 2 and 4 are reserved for TFT (DC/RST), 25 is `WAKE_STM_PIN`, 33 is the wake button — hence GPIO 26 for the diag LED.
+
+**Typical readable sequences** (STM group + ESP group per wake):
+- Healthy: `1 + 1` / `1 + 1`
+- STM sent OK, MQTT publish failed: `1 + 1` / `1 + 2`
+- STM sent OK, ESP didn't receive it (noisy UART): `1 + 1` / `1 + 3`
+- STM UART TX broken: `1 + 2` / `1 + 3`
+- ESP woke, STM never woke: `—` / `1 + 3`
+
+### PC13 current budget (important for external LED plan)
+
+PC13/14/15 sit on the backup domain and are limited to **~3 mA drive current** — much less than the 20 mA of other STM32F103 pins. The built-in LED already draws ~1.5 mA through its 1 kΩ resistor. Any *external* LED wired in parallel to PC13 must use a resistor ≥ 1 kΩ (2.2 kΩ recommended) so total stays under 3 mA. Do **not** wire external LEDs as active-HIGH from PC13 to GND — you'll fight the built-in circuit and the direction is opposite to what the code drives.
+
+If a **bright** external duplicate is wanted, don't hang it on PC13 — pick a free full-drive pin (`PB12`–`PB15` are all free and rated for 20 mA), configure it as push-pull output, and mirror the writes inside `LED_Blink()`. Add the extra `HAL_GPIO_WritePin` call *inverted* (active HIGH on the external side, active LOW on PC13) so both light up together.
+
 ## Roadmap of fixes (do incrementally, top to bottom)
 
 Each item lists the files involved and the "done" condition. Pick one, finish it, commit, move on. Mark done by replacing `[ ]` with `[x]`.

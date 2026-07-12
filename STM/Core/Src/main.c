@@ -26,6 +26,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define STARTUP_DEBUG_WINDOW_MS 5000
 
 /* USER CODE END PD */
 
@@ -60,6 +61,9 @@ static void MX_USART1_UART_Init(void);
 
 uint8_t Moisture_ToPercent(uint32_t raw, uint32_t dry, uint32_t wet);
 static void EnterStopMode(void);
+static uint8_t Debugger_IsAttached(void);
+static void LED_Blink(uint8_t count);
+HAL_StatusTypeDef MeasureAndDisplay(void);
 
 /* USER CODE END PFP */
 
@@ -72,13 +76,25 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 
 		measure_flag = 1;
 
-		HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13); // временно для теста
-
 	}
 }
 
+/* Диагностика через встроенный LED на PC13 (инверсная логика: LOW = ON).
+   1 короткая вспышка = событие OK, 2 = ошибка, 3 = отдельная ошибка (см. main loop). */
+static void LED_Blink(uint8_t count)
+{
+    for (uint8_t i = 0; i < count; i++)
+    {
+        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET); /* ON  */
+        HAL_Delay(120);
+        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);   /* OFF */
+        HAL_Delay(200);
+    }
+    HAL_Delay(400); /* пауза между группами вспышек */
+}
 
-void MeasureAndDisplay() {
+
+HAL_StatusTypeDef MeasureAndDisplay(void) {
 
     int16_t temp_integer = 0;
     int16_t temp_fraction = 0;
@@ -123,10 +139,10 @@ void MeasureAndDisplay() {
 
 
 
-    HAL_UART_Transmit(&huart1,
-                      (uint8_t*)uart_buffer,
-                      strlen(uart_buffer),
-                      HAL_MAX_DELAY);
+    return HAL_UART_Transmit(&huart1,
+                             (uint8_t*)uart_buffer,
+                             strlen(uart_buffer),
+                             2000);
 }
 
 uint8_t Moisture_ToPercent(uint32_t raw, uint32_t dry, uint32_t wet)
@@ -139,6 +155,12 @@ uint8_t Moisture_ToPercent(uint32_t raw, uint32_t dry, uint32_t wet)
 
 static void EnterStopMode(void)
 {
+    if (Debugger_IsAttached())
+    {
+        HAL_Delay(100);
+        return;
+    }
+
     HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
 
     HAL_SuspendTick();
@@ -148,6 +170,11 @@ static void EnterStopMode(void)
     HAL_ResumeTick();
 
     HAL_UART_Receive_IT(&huart1, &rx_data, 1);
+}
+
+static uint8_t Debugger_IsAttached(void)
+{
+    return (CoreDebug->DHCSR & CoreDebug_DHCSR_C_DEBUGEN_Msk) != 0U;
 }
 	
 
@@ -187,7 +214,31 @@ int main(void)
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
 
+  /* Держать SWD живым в low-power режимах — иначе CubeProgrammer не подцепится,
+     когда MCU в STOP. Должно быть выставлено ДО первого захода в сон. */
   __HAL_RCC_PWR_CLK_ENABLE();
+  HAL_DBGMCU_EnableDBGSleepMode();
+  HAL_DBGMCU_EnableDBGStopMode();
+  HAL_DBGMCU_EnableDBGStandbyMode();
+
+  /* FLASH-SAFE BOOT: если при reset удерживать кнопку PA3, MCU навсегда
+     остаётся в этом цикле (быстрое мигание LED) и никогда не уходит в STOP.
+     Это гарантирует, что STM32CubeProgrammer всегда сможет прошить чип
+     после любой сломанной прошивки. Сценарий:
+       1. Зажать кнопку PA3.
+       2. Нажать RESET (или передёрнуть питание).
+       3. Отпустить RESET, кнопку продолжать держать.
+       4. Прошить в CubeProgrammer.
+       5. Отпустить кнопку → нажать RESET → новая прошивка запустится нормально. */
+  HAL_Delay(20);  /* дать pull-up устаканиться */
+  if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_3) == GPIO_PIN_RESET)
+  {
+      while (1)
+      {
+          HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+          HAL_Delay(80);
+      }
+  }
 
   HAL_UART_Receive_IT(&huart1, &rx_data, 1);
 
@@ -224,17 +275,20 @@ int main(void)
   }
   
   HAL_Delay(500); // Пауза для проверки
+  HAL_Delay(STARTUP_DEBUG_WINDOW_MS);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1){
 
-    
+
     if (measure_flag)
     {
         measure_flag = 0;
-        MeasureAndDisplay();
+        LED_Blink(1);                                 /* проснулись */
+        HAL_StatusTypeDef tx = MeasureAndDisplay();
+        LED_Blink(tx == HAL_OK ? 1 : 2);              /* 1 = отправлено, 2 = ошибка UART */
     }
 
     EnterStopMode();
