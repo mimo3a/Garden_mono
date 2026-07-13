@@ -79,15 +79,19 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 	}
 }
 
-/* Диагностика через встроенный LED на PC13 (инверсная логика: LOW = ON).
-   1 короткая вспышка = событие OK, 2 = ошибка, 3 = отдельная ошибка (см. main loop). */
+/* Диагностика через встроенный LED на PC13 (инверсная: LOW = ON)
+   и внешний параллельный LED на PB12 (прямая: HIGH = ON).
+   Оба зажигаются/гасятся синхронно.
+   1 короткая вспышка = OK, 2 = ошибка, 3 = отдельная ошибка (см. main loop). */
 static void LED_Blink(uint8_t count)
 {
     for (uint8_t i = 0; i < count; i++)
     {
-        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET); /* ON  */
+        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET); /* PC13 ON  (active LOW)  */
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, GPIO_PIN_SET);   /* PB12 ON  (active HIGH) */
         HAL_Delay(120);
-        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);   /* OFF */
+        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);   /* PC13 OFF */
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, GPIO_PIN_RESET); /* PB12 OFF */
         HAL_Delay(200);
     }
     HAL_Delay(400); /* пауза между группами вспышек */
@@ -161,7 +165,9 @@ static void EnterStopMode(void)
         return;
     }
 
-    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
+    /* Оба LED выключить перед сном, чтобы не жрать ток в STOP. */
+    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);   /* PC13 OFF (active LOW)  */
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, GPIO_PIN_RESET); /* PB12 OFF (active HIGH) */
 
     HAL_SuspendTick();
     HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
@@ -233,9 +239,12 @@ int main(void)
   HAL_Delay(20);  /* дать pull-up устаканиться */
   if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_3) == GPIO_PIN_RESET)
   {
+      uint8_t s = 0;
       while (1)
       {
-          HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+          s = !s;
+          HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, s ? GPIO_PIN_RESET : GPIO_PIN_SET); /* PC13 sync */
+          HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, s ? GPIO_PIN_SET   : GPIO_PIN_RESET); /* PB12 sync */
           HAL_Delay(80);
       }
   }
@@ -429,7 +438,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1|GPIO_PIN_12, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : PC13 */
   GPIO_InitStruct.Pin = GPIO_PIN_13;
@@ -444,8 +453,14 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PB1 */
-  GPIO_InitStruct.Pin = GPIO_PIN_1;
+  /*Configure GPIO pin : PA3 */
+  GPIO_InitStruct.Pin = GPIO_PIN_3;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : PB1 PB12 */
+  GPIO_InitStruct.Pin = GPIO_PIN_1|GPIO_PIN_12;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -456,10 +471,6 @@ static void MX_GPIO_Init(void)
   HAL_NVIC_EnableIRQ(EXTI1_IRQn);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
-  GPIO_InitStruct.Pin = GPIO_PIN_3;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /* USER CODE END MX_GPIO_Init_2 */
 }
