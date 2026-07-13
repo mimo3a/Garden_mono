@@ -158,7 +158,8 @@ Because the firmware enters STOP mode almost immediately after each measurement,
 
 Both firmwares blink a single LED to trace what happened during each wake cycle. Patterns are timed 120 ms ON / 200 ms OFF, with a 400 ms gap between groups so `1+2` reads distinctly from `3`.
 
-**STM32 — built-in PC13** (active LOW, blinks are inverted-drive):
+**STM32 — built-in PC13 (active LOW) + external PB12 (active HIGH), driven in sync from `LED_Blink()`.** The two LEDs light and darken together across every diagnostic pulse and across the safe-boot fast-blink. PB12 wiring: `PB12 → R 330 Ω → LED anode → cathode → GND`.
+
 | Event | Blinks |
 |---|---|
 | Woke, starting measurement | 1 |
@@ -186,7 +187,7 @@ Pins 2 and 4 are reserved for TFT (DC/RST), 25 is `WAKE_STM_PIN`, 33 is the wake
 
 PC13/14/15 sit on the backup domain and are limited to **~3 mA drive current** — much less than the 20 mA of other STM32F103 pins. The built-in LED already draws ~1.5 mA through its 1 kΩ resistor. Any *external* LED wired in parallel to PC13 must use a resistor ≥ 1 kΩ (2.2 kΩ recommended) so total stays under 3 mA. Do **not** wire external LEDs as active-HIGH from PC13 to GND — you'll fight the built-in circuit and the direction is opposite to what the code drives.
 
-If a **bright** external duplicate is wanted, don't hang it on PC13 — pick a free full-drive pin (`PB12`–`PB15` are all free and rated for 20 mA), configure it as push-pull output, and mirror the writes inside `LED_Blink()`. Add the extra `HAL_GPIO_WritePin` call *inverted* (active HIGH on the external side, active LOW on PC13) so both light up together.
+A bright external duplicate is already implemented on **PB12** (push-pull, active HIGH, 20 mA capable). Config lives in the `USER CODE BEGIN MX_GPIO_Init_2` block in `main.c`, and `LED_Blink()` drives PC13 and PB12 in sync (inverted polarity on each side). If you'd rather move it to a different pin, replace `GPIO_PIN_12` / `GPIOB` in three places: the GPIO init in `MX_GPIO_Init`, the two `HAL_GPIO_WritePin` calls in `LED_Blink`, and the sync writes in the safe-boot loop.
 
 ## Roadmap of fixes (do incrementally, top to bottom)
 
