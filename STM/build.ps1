@@ -50,31 +50,31 @@ if ($Config -eq "Debug") {
     $CommonFlags += @("-Os", "-g0")
 }
 
-$Sources = @(
-    "Core/Src/main.c",
-    "Core/Src/moisture_sensor.c",
-    "Core/MyLib/ads1115.c",
-    "Core/MyLib/ds18b20.c",
-    "Core/MyLib/liquidcrystal_i2c.c",
-    "Core/Src/stm32f1xx_it.c",
-    "Core/Src/stm32f1xx_hal_msp.c",
-    "Core/Src/system_stm32f1xx.c",
-    "Core/Src/sysmem.c",
-    "Core/Src/syscalls.c",
-    "Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal.c",
-    "Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_cortex.c",
-    "Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_dma.c",
-    "Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_exti.c",
-    "Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_flash.c",
-    "Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_flash_ex.c",
-    "Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_gpio.c",
-    "Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_gpio_ex.c",
-    "Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_i2c.c",
-    "Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_pwr.c",
-    "Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_rcc.c",
-    "Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_rcc_ex.c",
-    "Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_uart.c"
+# Автоподхват всех .c из этих директорий. Если через CubeMX добавляешь новую
+# HAL периферию (например RTC) — соответствующий файл автоматически попадёт
+# в билд без правки этого скрипта. Компиляция файлов, чей модуль не включён в
+# stm32f1xx_hal_conf.h, безвредна — они дают почти пустой object.
+$SourceDirs = @(
+    "Core/Src",
+    "Core/MyLib",
+    "Drivers/STM32F1xx_HAL_Driver/Src"
 )
+
+$Sources = @()
+Push-Location $ProjectRoot
+try {
+    foreach ($dir in $SourceDirs) {
+        if (-not (Test-Path $dir)) {
+            throw "Source directory not found: $dir"
+        }
+        Get-ChildItem -Path $dir -Filter "*.c" -File | ForEach-Object {
+            $Sources += "$dir/$($_.Name)"
+        }
+    }
+}
+finally {
+    Pop-Location
+}
 
 $AsmSources = @(
     "Core/Startup/startup_stm32f103c8tx.s"
