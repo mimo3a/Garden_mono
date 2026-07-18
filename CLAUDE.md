@@ -138,21 +138,19 @@ Current hardware is a single STM32 board with **one** ADS1115 (4 moisture channe
 
 ## Firmware operational features
 
-### Flash-safe boot on STM32 (PA3 hold-to-recover)
+### Flashing recovery (clone MCU quirk)
 
-Because the firmware enters STOP mode almost immediately after each measurement, a normal SWD flash session can race the sleep and fail with `Error: failed to download Sector[0]` / `The core is locked up` in STM32CubeProgrammer. Two safeguards are in place:
+The board uses a clone STM32F103 (reports `Revision ID: Rev X` in CubeProgrammer). These clones' flash controller **fails on per-sector erase but always accepts full-chip erase**. This means every reflash needs to be preceded by a mass erase:
 
-- `HAL_DBGMCU_EnableDBGStopMode()` is called at the top of `main()` — SWD stays alive across STOP so an *Under Reset* connection can still halt the CPU.
-- **PA3 hold-to-recover:** at boot, immediately after peripheral init, `main.c` reads PA3. If it's pulled LOW (button held), the MCU enters an infinite fast-blink loop on PC13 and never touches STOP / ADS / DS18B20. This is the safety net: any firmware — even if the app itself is broken — can be reflashed by holding the button.
+- In STM32CubeProgrammer → `Erasing & Programming` tab → check **`Full chip erase`** → `Start Programming`. Or manually: `Erasing` tab → `Full chip erase` → then Program.
+- CLI equivalent:
+  ```
+  STM32_Programmer_CLI -c port=SWD mode=UR -e all -w F103First.hex 0x08000000 -v -rst
+  ```
 
-**Recovery procedure:**
-1. Hold PA3 button.
-2. Press RESET (or power-cycle) — keep the button held.
-3. PC13 LED blinks fast (~12 Hz) → safe-boot active.
-4. Flash normally in CubeProgrammer.
-5. Release button, press RESET → new firmware runs.
+`HAL_DBGMCU_EnableDBGStopMode()` still runs at the top of `main()`, so SWD stays alive across STOP — CubeProgrammer's *Under Reset* connect can halt the CPU even mid-cycle. If a reflash still fails after full-chip erase (rare, only if MCU is somehow wedged), fall back to **BOOT0 = 1 jumper** → RESET → flash → BOOT0 = 0 → RESET. That path bypasses user code entirely via ROM bootloader.
 
-**First-time bootstrap** (safe-boot not yet in flash): flash once using **BOOT0 = 1** jumper (system memory bootloader), then the button trap is available for every subsequent flash.
+*(The old PA3 hold-to-recover safe-boot mode was removed; PA3 is now used for battery voltage sensing — see below.)*
 
 ### Diagnostic LEDs (sleep-cycle status)
 
@@ -182,6 +180,29 @@ Pins 2 and 4 are reserved for TFT (DC/RST), 25 is `WAKE_STM_PIN`, 33 is the wake
 - STM sent OK, ESP didn't receive it (noisy UART): `1 + 1` / `1 + 3`
 - STM UART TX broken: `1 + 2` / `1 + 3`
 - ESP woke, STM never woke: `—` / `1 + 3`
+
+### Battery monitoring (18650 Li-Ion, single cell)
+
+Battery voltage is measured on **STM32 PA3 (ADC1 IN3)** via a resistor divider **R1 = R2 = 100 kΩ** between `BAT+` and `GND`. The midpoint feeds PA3, so ADC sees half of battery voltage (1.5 – 2.1 V for 3.0 – 4.2 V cell).
+
+Firmware (`main.c`):
+- `MX_ADC1_Init()` — configures ADC1 clock (PCLK2/6 = 12 MHz), PA3 as analog, single conversion on IN3, does one-time calibration at boot.
+- `ReadBatteryMillivolts()` — averages 8 samples, converts using `mV = raw · 3300 · 2 / 4095`.
+- Called from `MeasureAndDisplay()` on every wake, stored in `last_battery_mV`, added to JSON as `"battery":3812` (integer mV).
+- `CriticalBatteryShutdown()` — if `last_battery_mV < 3100`: 5 slow blinks on both LEDs, then `HAL_PWR_EnterSTANDBYMode()`. Wake only via NRST / power cycle after battery is replaced or charged.
+
+Thresholds are in `main.c` as macros: `BATTERY_LOW_MV` (3400, currently only informational, could be used to add a `"state":"low"` flag) and `BATTERY_CRITICAL_MV` (3100, triggers STANDBY).
+
+Hardware assumptions:
+- **TP4056 «with protection»** module (DW01A + FS8205A, 6 pins) between the solar panel / USB and the 18650 — handles overcharge/overdischarge/short.
+- **LDO** (recommend MCP1700-3302, ~1.6 µA quiescent) between `TP4056 OUT+` and STM32 VDD (3.3 V pin). *Never feed 3.7–4.2 V directly to STM32F103 — VDD max is 3.6 V.* AMS1117 on Blue Pill can't be used from battery (needs 5 V, wastes ~5 mA quiescent).
+- The battery voltage divider taps `TP4056 OUT+` (before LDO), so ADC reading reflects actual cell voltage, not regulated 3.3 V.
+
+JSON payload becomes:
+```json
+{"deviceId":1,"temperature":24.5,"soil":[78,45,23,90],"battery":3812}
+```
+Backend and frontend haven't been updated for the `battery` field yet — it's forward-compatible (existing consumers ignore unknown JSON fields).
 
 ### PC13 current budget (important for external LED plan)
 

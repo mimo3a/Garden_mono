@@ -37,6 +37,8 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+ADC_HandleTypeDef hadc1;
+
 I2C_HandleTypeDef hi2c1;
 
 UART_HandleTypeDef huart1;
@@ -50,6 +52,21 @@ uint8_t rx_data;
 char rx_buffer[32];
 uint8_t rx_index = 0;
 
+/* Батарея замеряется через ADC1_IN3 (PA3), делитель 100k+100k между BAT+ и GND.
+   hadc1 объявлен CubeMX'ом выше, ReadBatteryMillivolts() читает через него. */
+
+/* Последнее измеренное напряжение батареи, мВ.
+   Начальное значение 4200 = полный заряд — чтобы первый цикл после
+   power-on не решил сразу что «критично» и не ушёл в STANDBY. */
+static uint32_t last_battery_mV = 4200;
+
+/* Пороги для одной ячейки 18650 Li-Ion. */
+#define BATTERY_LOW_MV        3400U   /* ниже — флажок в JSON  */
+#define BATTERY_CRITICAL_MV   3100U   /* ниже — прощальный blink и STANDBY */
+#define BATTERY_VREF_MV       3300U   /* VDD/VREF+ STM32 после LDO */
+#define BATTERY_ADC_MAX       4095U   /* 12-bit ADC */
+#define BATTERY_DIVIDER       2U      /* R1=R2=100k → ×2 */
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -57,6 +74,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_USART1_UART_Init(void);
+static void MX_ADC1_Init(void);
 /* USER CODE BEGIN PFP */
 
 uint8_t Moisture_ToPercent(uint32_t raw, uint32_t dry, uint32_t wet);
@@ -64,6 +82,8 @@ static void EnterStopMode(void);
 static uint8_t Debugger_IsAttached(void);
 static void LED_Blink(uint8_t count);
 HAL_StatusTypeDef MeasureAndDisplay(void);
+static uint32_t ReadBatteryMillivolts(void);
+static void CriticalBatteryShutdown(void);
 
 /* USER CODE END PFP */
 
@@ -116,6 +136,8 @@ HAL_StatusTypeDef MeasureAndDisplay(void) {
     soil3 = Moisture_ToPercent(raw3, 17300, 7100);
     soil4 = Moisture_ToPercent(raw4, 17300, 7100);
 
+    last_battery_mV = ReadBatteryMillivolts();
+
     uint8_t result = DS18B20_ReadTemperatureInt(&temp_integer, &temp_fraction);
 
     char uart_buffer[256];
@@ -126,10 +148,12 @@ HAL_StatusTypeDef MeasureAndDisplay(void) {
             sizeof(uart_buffer),
             "{\"deviceId\":1,"
             "\"temperature\":%d.%02d,"
-            "\"soil\":[%lu,%lu,%lu,%lu]}\r\n",
+            "\"soil\":[%lu,%lu,%lu,%lu],"
+            "\"battery\":%lu}\r\n",
             temp_integer,
             temp_fraction,
-            soil1, soil2, soil3, soil4);
+            soil1, soil2, soil3, soil4,
+            last_battery_mV);
     }
     else
     {
@@ -137,8 +161,10 @@ HAL_StatusTypeDef MeasureAndDisplay(void) {
             sizeof(uart_buffer),
             "{\"deviceId\":1,"
             "\"temperature\":null,"
-            "\"soil\":[%lu,%lu,%lu,%lu]}\r\n",
-            soil1, soil2, soil3, soil4);
+            "\"soil\":[%lu,%lu,%lu,%lu],"
+            "\"battery\":%lu}\r\n",
+            soil1, soil2, soil3, soil4,
+            last_battery_mV);
     }
 
 
@@ -147,6 +173,38 @@ HAL_StatusTypeDef MeasureAndDisplay(void) {
                              (uint8_t*)uart_buffer,
                              strlen(uart_buffer),
                              2000);
+}
+
+/* Читает батарею: 8 сэмплов, усреднение, учёт делителя ×2. */
+static uint32_t ReadBatteryMillivolts(void)
+{
+    uint32_t sum = 0;
+    for (int i = 0; i < 8; i++)
+    {
+        HAL_ADC_Start(&hadc1);
+        HAL_ADC_PollForConversion(&hadc1, 10);
+        sum += HAL_ADC_GetValue(&hadc1);
+        HAL_ADC_Stop(&hadc1);
+    }
+    uint32_t raw = sum / 8U;
+    return (raw * BATTERY_VREF_MV * BATTERY_DIVIDER) / BATTERY_ADC_MAX;
+}
+
+/* Критический разряд: 5 медленных морганий обоих LED (по секунде на такт),
+   потом STANDBY. Выход из STANDBY — только через NRST/power-on. */
+static void CriticalBatteryShutdown(void)
+{
+    for (int i = 0; i < 5; i++)
+    {
+        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET); /* PC13 ON  */
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, GPIO_PIN_SET);   /* PB12 ON  */
+        HAL_Delay(500);
+        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);   /* PC13 OFF */
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, GPIO_PIN_RESET); /* PB12 OFF */
+        HAL_Delay(500);
+    }
+    HAL_PWR_EnterSTANDBYMode();
+    /* Сюда не возвращаемся — STANDBY = reset при пробуждении. */
 }
 
 uint8_t Moisture_ToPercent(uint32_t raw, uint32_t dry, uint32_t wet)
@@ -169,12 +227,20 @@ static void EnterStopMode(void)
     HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);   /* PC13 OFF (active LOW)  */
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, GPIO_PIN_RESET); /* PB12 OFF (active HIGH) */
 
+    /* Отменить висящий RX-IT перед STOP — иначе callback может выстрелить
+       на мусорном байте при пробуждении. */
+    HAL_UART_AbortReceive_IT(&huart1);
+
     HAL_SuspendTick();
     HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
 
     SystemClock_Config();
     HAL_ResumeTick();
 
+    /* Полный ре-init UART после STOP. Без этого первая TX после пробуждения
+       выходит мусором (␀␀␀…) — peripheral после STOP в неопределённом состоянии. */
+    HAL_UART_DeInit(&huart1);
+    MX_USART1_UART_Init();
     HAL_UART_Receive_IT(&huart1, &rx_data, 1);
 }
 
@@ -218,36 +284,18 @@ int main(void)
   MX_GPIO_Init();
   MX_I2C1_Init();
   MX_USART1_UART_Init();
+  MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
 
-  /* Держать SWD живым в low-power режимах — иначе CubeProgrammer не подцепится,
-     когда MCU в STOP. Должно быть выставлено ДО первого захода в сон. */
+  /* Держать SWD живым в low-power режимах — полезно для отладки. */
   __HAL_RCC_PWR_CLK_ENABLE();
   HAL_DBGMCU_EnableDBGSleepMode();
   HAL_DBGMCU_EnableDBGStopMode();
   HAL_DBGMCU_EnableDBGStandbyMode();
 
-  /* FLASH-SAFE BOOT: если при reset удерживать кнопку PA3, MCU навсегда
-     остаётся в этом цикле (быстрое мигание LED) и никогда не уходит в STOP.
-     Это гарантирует, что STM32CubeProgrammer всегда сможет прошить чип
-     после любой сломанной прошивки. Сценарий:
-       1. Зажать кнопку PA3.
-       2. Нажать RESET (или передёрнуть питание).
-       3. Отпустить RESET, кнопку продолжать держать.
-       4. Прошить в CubeProgrammer.
-       5. Отпустить кнопку → нажать RESET → новая прошивка запустится нормально. */
-  HAL_Delay(20);  /* дать pull-up устаканиться */
-  if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_3) == GPIO_PIN_RESET)
-  {
-      uint8_t s = 0;
-      while (1)
-      {
-          s = !s;
-          HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, s ? GPIO_PIN_RESET : GPIO_PIN_SET); /* PC13 sync */
-          HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, s ? GPIO_PIN_SET   : GPIO_PIN_RESET); /* PB12 sync */
-          HAL_Delay(80);
-      }
-  }
+  /* Калибровка ADC1 — обязательна на F103 для точности >±5 LSB.
+     CubeMX её не генерит, делаем сами один раз при старте. */
+  HAL_ADCEx_Calibration_Start(&hadc1);
 
   HAL_UART_Receive_IT(&huart1, &rx_data, 1);
 
@@ -298,6 +346,25 @@ int main(void)
         LED_Blink(1);                                 /* проснулись */
         HAL_StatusTypeDef tx = MeasureAndDisplay();
         LED_Blink(tx == HAL_OK ? 1 : 2);              /* 1 = отправлено, 2 = ошибка UART */
+
+        /* Критическая батарея — прощай, до замены/зарядки.
+           Нижний порог 2400 мВ соответствует срабатыванию DW01A: ниже этого
+           реальная батарея физически не может быть (модуль защиты отсекает
+           нагрузку). Всё что ниже — «делитель не подключён / PA3 болтается».
+           Требуются 3 замера подряд в диапазоне 2400..CRITICAL мВ. */
+        static uint8_t critical_streak = 0;
+        if (last_battery_mV > 2400U && last_battery_mV < BATTERY_CRITICAL_MV)
+        {
+            critical_streak++;
+            if (critical_streak >= 3)
+            {
+                CriticalBatteryShutdown();
+            }
+        }
+        else
+        {
+            critical_streak = 0;
+        }
     }
 
     EnterStopMode();
@@ -318,6 +385,7 @@ void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+  RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
 
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
@@ -347,6 +415,68 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_ADC;
+  PeriphClkInit.AdcClockSelection = RCC_ADCPCLK2_DIV6;
+  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
+
+/**
+  * @brief ADC1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_ADC1_Init(void)
+{
+
+  /* USER CODE BEGIN ADC1_Init 0 */
+
+  /* USER CODE END ADC1_Init 0 */
+
+  ADC_ChannelConfTypeDef sConfig = {0};
+
+  /* USER CODE BEGIN ADC1_Init 1 */
+
+  /* USER CODE END ADC1_Init 1 */
+
+  /** Common config
+  */
+  hadc1.Instance = ADC1;
+  hadc1.Init.ScanConvMode = ADC_SCAN_DISABLE;
+  hadc1.Init.ContinuousConvMode = DISABLE;
+  hadc1.Init.DiscontinuousConvMode = DISABLE;
+  hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+  hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+  hadc1.Init.NbrOfConversion = 1;
+  if (HAL_ADC_Init(&hadc1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Regular Channel
+  */
+  sConfig.Channel = ADC_CHANNEL_3;
+  sConfig.Rank = ADC_REGULAR_RANK_1;
+  sConfig.SamplingTime = ADC_SAMPLETIME_71CYCLES_5;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN ADC1_Init 2 */
+  /* Override sampling time: 7.5 циклов (625 нс) слишком коротко для источника с
+     Thevenin ~50 кΩ (наш делитель 100k+100k). ADC не успевает зарядить sample cap →
+     показания занижены. 71.5 циклов ≈ 6 мкс — с большим запасом. Лучше это же
+     значение выставить и в CubeMX (Parameter Settings → Rank 1 → Sampling Time),
+     чтобы override не был нужен. */
+  sConfig.SamplingTime = ADC_SAMPLETIME_71CYCLES_5;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE END ADC1_Init 2 */
+
 }
 
 /**
@@ -451,12 +581,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pin = GPIO_PIN_1;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_PULLDOWN;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : PA3 */
-  GPIO_InitStruct.Pin = GPIO_PIN_3;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pins : PB1 PB12 */
