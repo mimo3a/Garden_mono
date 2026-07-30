@@ -36,8 +36,9 @@ public class MqttMessageHandler implements MessageHandler {
             String payload = message.getPayload().toString();
             JsonNode json = objectMapper.readTree(payload);
 
-            Double temperature = json.get("temperature").asDouble();
+            JsonNode tempNode = json.get("temperature");
             JsonNode soilArray = json.get("soil");
+            JsonNode batteryNode = json.get("battery");
 
             Sensor sensor = sensorRepository.findByDeviceId(deviceId)
                     .orElseGet(() -> {
@@ -47,11 +48,17 @@ public class MqttMessageHandler implements MessageHandler {
                         return sensorRepository.save(s);
                     });
 
-            saveMeasurement(sensor, "temperature", temperature);
+            if (tempNode != null && !tempNode.isNull()) {
+                saveMeasurement(sensor, "temperature", tempNode.asDouble());
+            }
 
             for (int i = 0; i < soilArray.size(); i++) {
                 saveMeasurement(sensor, "soil" + (i + 1),
                         soilArray.get(i).asDouble());
+            }
+
+            if (batteryNode != null && !batteryNode.isNull()) {
+                saveMeasurement(sensor, "battery", batteryNode.asDouble());
             }
 
             System.out.println("Saved data from device " + deviceId);
