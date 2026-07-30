@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+git import { Link } from 'react-router-dom'
 import { getStatus, STATUS_COLOR, STATUS_BG } from '../constants/thresholds'
 
 function SoilBar({ label, value }) {
