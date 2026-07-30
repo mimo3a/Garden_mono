@@ -92,8 +92,9 @@ static void CriticalBatteryShutdown(void);
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 
-	if(GPIO_Pin == GPIO_PIN_1){
-
+	if(GPIO_Pin == GPIO_PIN_10){
+		/* PA10 = UART1 RX переконфигурирован как EXTI перед STOP.
+		   Стартовый бит первого байта от ESP будит MCU без провода. */
 		measure_flag = 1;
 
 	}
@@ -227,9 +228,20 @@ static void EnterStopMode(void)
     HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);   /* PC13 OFF (active LOW)  */
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, GPIO_PIN_RESET); /* PB12 OFF (active HIGH) */
 
-    /* Отменить висящий RX-IT перед STOP — иначе callback может выстрелить
-       на мусорном байте при пробуждении. */
+    /* DeInit UART — освобождает PA10 (RX pin) для переконфигурации в EXTI. */
     HAL_UART_AbortReceive_IT(&huart1);
+    HAL_UART_DeInit(&huart1);
+
+    /* PA10 (UART1 RX) → EXTI falling edge. UART idle = HIGH; стартовый
+       бит первого байта от ESP тянет линию LOW — этого достаточно чтобы
+       разбудить MCU из STOP без отдельного провода GPIO25→PA1. */
+    GPIO_InitTypeDef GPIO_InitStruct = {0};
+    GPIO_InitStruct.Pin  = GPIO_PIN_10;
+    GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+    GPIO_InitStruct.Pull = GPIO_PULLUP; /* удерживает HIGH пока ESP в sleep (TX флоатит) */
+    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+    HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
+    HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
     HAL_SuspendTick();
     HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
@@ -237,9 +249,10 @@ static void EnterStopMode(void)
     SystemClock_Config();
     HAL_ResumeTick();
 
+    HAL_NVIC_DisableIRQ(EXTI15_10_IRQn);
+
     /* Полный ре-init UART после STOP. Без этого первая TX после пробуждения
        выходит мусором (␀␀␀…) — peripheral после STOP в неопределённом состоянии. */
-    HAL_UART_DeInit(&huart1);
     MX_USART1_UART_Init();
     HAL_UART_Receive_IT(&huart1, &rx_data, 1);
 }
@@ -577,22 +590,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PA1 */
-  GPIO_InitStruct.Pin = GPIO_PIN_1;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
   /*Configure GPIO pins : PB1 PB12 */
   GPIO_InitStruct.Pin = GPIO_PIN_1|GPIO_PIN_12;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-  /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI1_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(EXTI1_IRQn);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 

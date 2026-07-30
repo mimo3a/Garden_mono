@@ -20,7 +20,6 @@ TFT_eSPI tft = TFT_eSPI();
 
 #define RXD2 16
 #define TXD2 17
-#define WAKE_STM_PIN 25
 #define WAKE_BUTTON_PIN GPIO_NUM_33
 
 // Диагностический LED (внешний, через резистор на GND). Активный HIGH.
@@ -29,7 +28,6 @@ TFT_eSPI tft = TFT_eSPI();
 #define DIAG_LED_PIN 26
 
 const uint64_t SLEEP_INTERVAL_US = 30ULL * 60ULL * 1000000ULL;
-const unsigned long WAKE_PULSE_MS = 100;
 const unsigned long MEASURE_TIMEOUT_MS = 20000;
 const unsigned long MQTT_FLUSH_MS = 500;
 
@@ -163,7 +161,6 @@ void goToSleep()
   WiFi.disconnect(true);
   WiFi.mode(WIFI_OFF);
 
-  digitalWrite(WAKE_STM_PIN, LOW);
   esp_sleep_enable_timer_wakeup(SLEEP_INTERVAL_US);
   esp_sleep_enable_ext0_wakeup(WAKE_BUTTON_PIN, 0);
   delay(100);
@@ -172,11 +169,8 @@ void goToSleep()
 
 void requestMeasurement()
 {
-  digitalWrite(WAKE_STM_PIN, HIGH);
-  delay(WAKE_PULSE_MS);
-  digitalWrite(WAKE_STM_PIN, LOW);
-
-  Serial.println("STM32 wake pulse sent");
+  Serial2.println("MEASURE");
+  Serial.println("STM32 wake via UART sent");
 }
 
 // -------------------- SETUP --------------------
@@ -186,16 +180,18 @@ void setup()
   Serial.begin(115200);
   Serial2.begin(115200, SERIAL_8N1, RXD2, TXD2);
 
-  pinMode(WAKE_STM_PIN, OUTPUT);
-  digitalWrite(WAKE_STM_PIN, LOW);
   pinMode((uint8_t)WAKE_BUTTON_PIN, INPUT_PULLUP);
 
   pinMode(DIAG_LED_PIN, OUTPUT);
   digitalWrite(DIAG_LED_PIN, LOW);
   diagBlink(1);  // проснулся
 
+  /* Будим STM32 сразу — пока ESP коннектится к WiFi, STM измеряет.
+     JSON буферизуется в UART RX буфере ESP (256 байт), readMeasurement() прочитает позже. */
+  requestMeasurement();
+
   tft.init();
-  tft.setRotation(1);
+  tft.setRotation(0);
   screenHeader("SMART GARDEN");
 
   connectWiFi();
@@ -203,9 +199,12 @@ void setup()
   client.setServer(MQTT_SERVER, MQTT_PORT);
   connectMQTT();
 
-  requestMeasurement();
-
   String line = readMeasurement();
+
+  if (line.length() == 0) {
+    requestMeasurement();
+    line = readMeasurement();
+  }
 
   if (line.length() > 0) {
     screenHeader("DATA");

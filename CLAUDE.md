@@ -186,23 +186,65 @@ Pins 2 and 4 are reserved for TFT (DC/RST), 25 is `WAKE_STM_PIN`, 33 is the wake
 Battery voltage is measured on **STM32 PA3 (ADC1 IN3)** via a resistor divider **R1 = R2 = 100 kΩ** between `BAT+` and `GND`. The midpoint feeds PA3, so ADC sees half of battery voltage (1.5 – 2.1 V for 3.0 – 4.2 V cell).
 
 Firmware (`main.c`):
-- `MX_ADC1_Init()` — configures ADC1 clock (PCLK2/6 = 12 MHz), PA3 as analog, single conversion on IN3, does one-time calibration at boot.
+- `MX_ADC1_Init()` — configures ADC1 clock (PCLK2/6 = 12 MHz), PA3 as analog, single conversion on IN3. `HAL_ADCEx_Calibration_Start(&hadc1)` is called from `USER CODE BEGIN 2` (CubeMX doesn't generate it). Sampling time overridden to 71.5 cycles in `USER CODE ADC1_Init 2` — the 50 kΩ Thevenin of the divider needs long charge time; CubeMX default 7.5 cycles gives wrong readings.
 - `ReadBatteryMillivolts()` — averages 8 samples, converts using `mV = raw · 3300 · 2 / 4095`.
 - Called from `MeasureAndDisplay()` on every wake, stored in `last_battery_mV`, added to JSON as `"battery":3812` (integer mV).
-- `CriticalBatteryShutdown()` — if `last_battery_mV < 3100`: 5 slow blinks on both LEDs, then `HAL_PWR_EnterSTANDBYMode()`. Wake only via NRST / power cycle after battery is replaced or charged.
+- `CriticalBatteryShutdown()` — if reading is in the critical range **and** it stays there for 3 consecutive cycles: 5 slow blinks on both LEDs, then `HAL_PWR_EnterSTANDBYMode()`. Wake only via NRST / power cycle after battery is replaced or charged.
+- **Safeguard: `last_battery_mV > 2400 && last_battery_mV < BATTERY_CRITICAL_MV`.** The 2400 mV floor matches DW01A protection cutoff — a physically present, protected 18650 cannot read below this. Anything under 2400 mV means PA3 is floating (no divider wired) or the divider is broken — treat as noise, not "critical battery". Without this floor, a floating PA3 reading ~800 mV would trigger STANDBY and require a physical NRST press to recover.
 
 Thresholds are in `main.c` as macros: `BATTERY_LOW_MV` (3400, currently only informational, could be used to add a `"state":"low"` flag) and `BATTERY_CRITICAL_MV` (3100, triggers STANDBY).
+
+**Verified reading (2026-07 debug session):** with a real freshly charged 18650 through the divider, `battery` field reports 4026-4029 mV, stable within ±3 mV per sample. Formula and sampling time are correct.
 
 Hardware assumptions:
 - **TP4056 «with protection»** module (DW01A + FS8205A, 6 pins) between the solar panel / USB and the 18650 — handles overcharge/overdischarge/short.
 - **LDO** (recommend MCP1700-3302, ~1.6 µA quiescent) between `TP4056 OUT+` and STM32 VDD (3.3 V pin). *Never feed 3.7–4.2 V directly to STM32F103 — VDD max is 3.6 V.* AMS1117 on Blue Pill can't be used from battery (needs 5 V, wastes ~5 mA quiescent).
-- The battery voltage divider taps `TP4056 OUT+` (before LDO), so ADC reading reflects actual cell voltage, not regulated 3.3 V.
+- The battery voltage divider taps **`TP4056 OUT+`** (before LDO, AFTER DW01A protection), so ADC reading reflects actual cell voltage but the load is still protected against over-discharge. **Do NOT tap `B+`** — that side bypasses protection and defeats the point of the "with protection" module.
+
+Solder points recap:
+- `TP4056 OUT+` → R1 (100 kΩ) → PA3 → R2 (100 kΩ) → GND
+- All grounds must be common: `TP4056 OUT-` ↔ STM32 GND ↔ ESP32 GND
+- Sanity check with multimeter before powering STM: voltage at PA3 must be exactly half of `OUT+`. If PA3 > 3.3 V, the divider is wired wrong — do not connect.
 
 JSON payload becomes:
 ```json
 {"deviceId":1,"temperature":24.5,"soil":[78,45,23,90],"battery":3812}
 ```
 Backend and frontend haven't been updated for the `battery` field yet — it's forward-compatible (existing consumers ignore unknown JSON fields).
+
+### STOP mode UART recovery
+
+After `HAL_PWR_EnterSTOPMode(...)`, the STM32F103's USART peripheral is left in an undefined state — the first TX after wake goes out as garbage (`␀␀␀…` bytes) even though clocks and GPIOs look fine. Symptom: cycle 1 works, cycle 2 sends corrupted JSON that the ESP can't parse, ESP hits `readMeasurement()` timeout (3 blinks).
+
+Fix lives in `EnterStopMode()` in `main.c`, executed immediately after wake:
+
+```c
+HAL_UART_AbortReceive_IT(&huart1);
+HAL_SuspendTick();
+HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
+SystemClock_Config();
+HAL_ResumeTick();
+
+/* Полный ре-init UART после STOP — иначе первая TX выходит мусором. */
+HAL_UART_DeInit(&huart1);
+MX_USART1_UART_Init();
+HAL_UART_Receive_IT(&huart1, &rx_data, 1);
+```
+
+If you ever add I2C or SPI transactions immediately after wake and see similar corruption, apply the same `HAL_..._DeInit` + `MX_..._Init` pattern to that peripheral.
+
+### PA1 EXTI wake pin — noise workaround
+
+The ESP32 → STM32 wake path (`ESP GPIO25 → STM32 PA1`, EXTI rising edge) has a **noise problem** when ESP is in deep sleep. In that state ESP GPIO25 is high-impedance, so the wire acts as an antenna. The STM32 internal pull-down on PA1 (~40 kΩ) is too weak to hold the line quiet against mains-frequency and RF pickup — result is spurious EXTI firings, STM wakes at random intervals, LED blinks chaotically.
+
+Symptom: LED blinks off-schedule (not the healthy "1 pulse per 30 min" cadence). Wiggling the physical wire from PA1 changes the blink pattern — that's diagnostic proof it's this pin.
+
+Two fixes:
+
+1. **Immediate (hardware only, no firmware change):** external **4.7–10 kΩ pull-down resistor** between PA1 and GND. Strong enough to override antenna pickup. Solder or breadboard.
+2. **Proper (roadmap item 4):** remove the wake pin entirely. ESP shouldn't need it — a `MEASURE\n` line over UART already wakes STM via UART RX interrupt. **But note:** the current ESP `requestMeasurement()` only pulses the wake pin, it does **not** send `MEASURE\n` over `Serial2`. Before cutting the wire, add `Serial2.println("MEASURE");` to ESP `requestMeasurement()`, then remove PA1 EXTI on STM side.
+
+PA1 is currently configured in CubeMX as `GPIO_EXTI1`, rising edge, pull-down. That's the correct config for its role — the noise is a hardware antenna problem, not a firmware config bug.
 
 ### PC13 current budget (important for external LED plan)
 
@@ -230,10 +272,16 @@ Smallest change, biggest visible impact — Dashboard currently has to pull full
 - In `SensorController`, replace `throw new RuntimeException("Sensor not found")` with a `SensorNotFoundException` annotated `@ResponseStatus(NOT_FOUND)` (or return `ResponseEntity.notFound()`).
 - **Done when:** A malformed MQTT payload produces a useful log line; missing-sensor REST calls return 404, not 500.
 
-### 4. `[ ]` Remove redundant wake-pin trigger
-The ESP both pulses `WAKE_STM_PIN` (GPIO25 → STM32 PA1 EXTI) **and** sends `MEASURE\n` over UART. Pick one — keep UART, drop the pin:
-- ESP `src/main.cpp`: remove the `WAKE_STM_PIN` `pinMode`/`digitalWrite` lines in `setup()` and `loop()`.
-- STM32 `Core/Src/main.c`: remove the `GPIO_PIN_1` branch from `HAL_GPIO_EXTI_Callback`; in `MX_GPIO_Init` drop the PA1 EXTI config and the `EXTI1_IRQn` enable. (Keep PA3 button — that's the local user button.)
+### 4. `[ ]` Remove redundant wake-pin trigger *(priority bumped — noise-vulnerable)*
+The `ESP GPIO25 → STM32 PA1` line picks up noise while ESP is in deep sleep and triggers spurious EXTI wakes (see "PA1 EXTI wake pin — noise workaround" above). Temporary fix is a 4.7–10 kΩ external pull-down; permanent fix is to remove the wake pin altogether and rely on UART `MEASURE\n`.
+
+**Current state discrepancy:** ESP `requestMeasurement()` only pulses `WAKE_STM_PIN`, it does NOT send `MEASURE\n`. The UART RX handler on STM already parses `MEASURE` (see `rx_buffer` state machine in `main.c`) — that path is wired end-to-end on the STM side but no one calls it from ESP right now. So step 1 must come before step 3.
+
+- **Step 1 — ESP:** in `ESP/src/main.cpp` `requestMeasurement()`, add `Serial2.println("MEASURE");` (before or after the pin pulse — doesn't matter, this is the transition state).
+- **Step 2 — verify:** flash, confirm STM still measures each cycle. If it does, both paths are working simultaneously and it's safe to remove the pin.
+- **Step 3 — ESP:** remove `WAKE_STM_PIN` `pinMode`/`digitalWrite` lines in `setup()`, `requestMeasurement()`, `goToSleep()`.
+- **Step 4 — STM32:** in `Core/Src/main.c` `HAL_GPIO_EXTI_Callback`, remove the `GPIO_PIN_1` branch. In CubeMX (`.ioc`), change PA1 from `GPIO_EXTI1` to `Reset_State` (or leave unassigned), disable `EXTI1_IRQn` in NVIC, regenerate. Keep PA3 button — that's the local user button.
+- **Step 5:** physically cut/unplug the GPIO25↔PA1 wire.
 - **Done when:** Disconnecting GPIO25 from PA1 has no effect on measurement cadence.
 
 ### 5. `[ ]` Collapse `Measurement` schema: one row per sample (group-aware)
