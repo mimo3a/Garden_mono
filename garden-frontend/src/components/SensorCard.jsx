@@ -21,11 +21,13 @@ function SoilBar({ label, value }) {
 
 export default function SensorCard({ sensor, latest }) {
   const temp = latest?.find(m => m.type === 'temperature')
+  const bat  = latest?.find(m => m.type === 'battery')
   const soils = ['soil1', 'soil2', 'soil3', 'soil4']
     .map(t => ({ label: t, value: latest?.find(m => m.type === t)?.value }))
     .filter(s => s.value != null)
 
   const tempStatus = temp ? getStatus('temperature', temp.value) : 'ok'
+  const batStatus  = bat  ? getStatus('battery', bat.value)      : null
 
   return (
     <Link
@@ -37,7 +39,14 @@ export default function SensorCard({ sensor, latest }) {
           <p className="font-semibold text-white">{sensor.name || `Device ${sensor.deviceId}`}</p>
           <p className="text-xs text-gray-500">{sensor.location || 'No location'}</p>
         </div>
-        <span className="text-xs text-gray-600">#{sensor.deviceId}</span>
+        <div className="flex flex-col items-end gap-1">
+          <span className="text-xs text-gray-600">#{sensor.deviceId}</span>
+          {bat && (
+            <span className={`text-xs font-medium ${STATUS_COLOR[batStatus]}`}>
+              {(bat.value / 1000).toFixed(2)}V
+            </span>
+          )}
+        </div>
       </div>
 
       <div className={`text-3xl font-bold mb-3 ${STATUS_COLOR[tempStatus]}`}>
