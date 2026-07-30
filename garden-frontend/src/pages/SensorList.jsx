@@ -56,7 +56,7 @@ export default function SensorList() {
                 <td className="px-4 py-3 text-gray-400">{s.location || '—'}</td>
                 <td className="px-4 py-3 text-gray-400">
                   {lastSeen[s.deviceId]
-                    ? new Date(lastSeen[s.deviceId]).toLocaleString()
+                    ? new Date(lastSeen[s.deviceId]).toLocaleString('de-AT')
                     : '—'}
                 </td>
                 <td className="px-4 py-3">
