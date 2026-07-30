@@ -90,7 +90,7 @@ export default function Measurements() {
                 <td className="px-4 py-2 text-gray-300">{m.sensorName}</td>
                 <td className="px-4 py-2 text-gray-300">{m.type}</td>
                 <td className="px-4 py-2 text-white">
-                  {m.value.toFixed(2)}{m.type === 'temperature' ? ' °C' : ' %'}
+                  {m.value.toFixed(2)}{m.type === 'temperature' ? ' °C' : m.type === 'battery' ? ' mV' : ' %'}
                 </td>
               </tr>
             ))}
