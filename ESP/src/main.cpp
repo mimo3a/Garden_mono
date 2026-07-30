@@ -27,7 +27,7 @@ TFT_eSPI tft = TFT_eSPI();
 // безопасен, RTC-домен deep_sleep его не трогает.
 #define DIAG_LED_PIN 26
 
-const uint64_t SLEEP_INTERVAL_US = 30ULL * 60ULL * 1000000ULL;
+const uint64_t SLEEP_INTERVAL_US = 60ULL * 60ULL * 1000000ULL;
 const unsigned long MEASURE_TIMEOUT_MS = 20000;
 const unsigned long MQTT_FLUSH_MS = 500;
 
@@ -70,6 +70,12 @@ void screenLine(const String& text, int y)
 
 void connectWiFi()
 {
+  IPAddress local_IP(192, 168, 178, 100);
+  IPAddress gateway(192, 168, 178, 1);
+  IPAddress subnet(255, 255, 255, 0);
+  IPAddress dns(192, 168, 178, 1);
+  WiFi.config(local_IP, gateway, dns, subnet);
+
   WiFi.begin(WIFI_SSID, WIFI_PASS);
 
   while (WiFi.status() != WL_CONNECTED) {
