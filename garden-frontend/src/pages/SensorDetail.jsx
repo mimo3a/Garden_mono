@@ -40,13 +40,13 @@ export default function SensorDetail() {
   const tempData = history
     .filter(m => m.type === 'temperature')
     .slice().reverse()
-    .map(m => ({ time: new Date(m.timestamp).toLocaleTimeString(), value: m.value }))
+    .map(m => ({ time: new Date(m.timestamp).toLocaleTimeString('de-AT'), value: m.value }))
 
   const soilTypes = ['soil1', 'soil2', 'soil3', 'soil4']
   const soilData = (() => {
     const byTime = {}
     history.filter(m => m.type.startsWith('soil')).forEach(m => {
-      const t = new Date(m.timestamp).toLocaleTimeString()
+      const t = new Date(m.timestamp).toLocaleTimeString('de-AT')
       if (!byTime[t]) byTime[t] = { time: t }
       byTime[t][m.type] = m.value
     })
@@ -114,7 +114,7 @@ export default function SensorDetail() {
           <tbody>
             {pageRows.map(m => (
               <tr key={m.id} className="border-b border-gray-700">
-                <td className="px-4 py-2 text-gray-400">{new Date(m.timestamp).toLocaleString()}</td>
+                <td className="px-4 py-2 text-gray-400">{new Date(m.timestamp).toLocaleString('de-AT')}</td>
                 <td className="px-4 py-2 text-gray-300">{m.type}</td>
                 <td className="px-4 py-2 text-white">
                   {m.value.toFixed(2)}{m.type === 'temperature' ? ' °C' : ' %'}
