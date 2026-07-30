@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getSensors, getSensorHistory } from '../api/sensors'
+import { formatDateTime } from '../utils/time'
 import LoadingSpinner from '../components/LoadingSpinner'
 
 function exportCSV(rows) {
@@ -85,7 +86,7 @@ export default function Measurements() {
           <tbody>
             {pageRows.map(m => (
               <tr key={m.id} className="border-b border-gray-700">
-                <td className="px-4 py-2 text-gray-400">{new Date(m.timestamp).toLocaleString('de-AT')}</td>
+                <td className="px-4 py-2 text-gray-400">{formatDateTime(m.timestamp)}</td>
                 <td className="px-4 py-2 text-gray-300">{m.sensorName}</td>
                 <td className="px-4 py-2 text-gray-300">{m.type}</td>
                 <td className="px-4 py-2 text-white">

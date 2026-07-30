@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getSensors, getSensorHistory } from '../api/sensors'
+import { formatDateTime } from '../utils/time'
 import LoadingSpinner from '../components/LoadingSpinner'
 
 export default function SensorList() {
@@ -56,7 +57,7 @@ export default function SensorList() {
                 <td className="px-4 py-3 text-gray-400">{s.location || '—'}</td>
                 <td className="px-4 py-3 text-gray-400">
                   {lastSeen[s.deviceId]
-                    ? new Date(lastSeen[s.deviceId]).toLocaleString('de-AT')
+                    ? formatDateTime(lastSeen[s.deviceId])
                     : '—'}
                 </td>
                 <td className="px-4 py-3">
