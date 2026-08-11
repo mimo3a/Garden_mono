@@ -28,7 +28,7 @@ TFT_eSPI tft = TFT_eSPI();
 #define DIAG_LED_PIN 26
 
 const uint64_t SLEEP_INTERVAL_US = 60ULL * 60ULL * 1000000ULL;
-const unsigned long MEASURE_TIMEOUT_MS = 20000;
+const unsigned long MEASURE_TIMEOUT_MS = 60000;
 const unsigned long MQTT_FLUSH_MS = 500;
 
 // -------------------- DIAG LED --------------------
@@ -160,8 +160,8 @@ String topicForPayload(const String& payload)
 
 void goToSleep()
 {
-  screenLine("SLEEP 30 MIN", 160);
-  Serial.println("Going to deep sleep for 30 minutes");
+  screenLine("SLEEP 60 MIN", 160);
+  Serial.println("Going to deep sleep for 60 minutes");
 
   client.disconnect();
   WiFi.disconnect(true);
@@ -207,11 +207,6 @@ void setup()
 
   String line = readMeasurement();
 
-  if (line.length() == 0) {
-    requestMeasurement();
-    line = readMeasurement();
-  }
-
   if (line.length() > 0) {
     screenHeader("DATA");
     screenLine(line, 40);
@@ -229,10 +224,18 @@ void setup()
       Serial.println("MQTT FAIL");
       diagBlink(2);  // MQTT провалился
     }
+
+    // ACK в STM — независимо от результата MQTT.
+    // STM ждёт этот сигнал чтобы лечь спать (таймаут 30 сек на STM стороне).
+    Serial2.println("OK");
+    Serial2.flush();
+    delay(50);
   } else {
     screenHeader("NO DATA");
     Serial.println("No valid STM32 JSON received before timeout");
     diagBlink(3);  // UART от STM не пришёл
+    // ACK не шлём — STM либо не проснулся (уже в STOP),
+    // либо сам уйдёт в STOP по таймауту 30 сек.
   }
 
   unsigned long flushUntil = millis() + MQTT_FLUSH_MS;
