@@ -45,6 +45,7 @@ UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
 volatile uint8_t measure_flag = 0;
+volatile uint8_t ack_received = 0;
 uint32_t adc_value = 0;
 ADS1115_t ads;
 
@@ -356,6 +357,7 @@ int main(void)
     if (measure_flag)
     {
         measure_flag = 0;
+        ack_received = 0;
         LED_Blink(1);                                 /* проснулись */
         HAL_StatusTypeDef tx = MeasureAndDisplay();
         LED_Blink(tx == HAL_OK ? 1 : 2);              /* 1 = отправлено, 2 = ошибка UART */
@@ -377,6 +379,14 @@ int main(void)
         else
         {
             critical_streak = 0;
+        }
+
+        /* Ждём ACK от ESP максимум 30 сек. HAL_UART_RxCpltCallback выставит
+           ack_received когда придёт "OK\n". По таймауту тоже идём спать —
+           защита батареи от зависания если ESP не ответил. */
+        uint32_t t0 = HAL_GetTick();
+        while (!ack_received && (HAL_GetTick() - t0) < 30000UL)
+        {
         }
     }
 
@@ -624,6 +634,10 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
             if (strcmp(rx_buffer, "MEASURE") == 0)
             {
                 measure_flag = 1;
+            }
+            else if (strcmp(rx_buffer, "OK") == 0)
+            {
+                ack_received = 1;
             }
 
             rx_index = 0;
