@@ -1,239 +1,217 @@
 # Smart Garden
 
-Система мониторинга сада: температура почвы и влажность в реальном времени.
+A self-hosted garden monitoring system that measures soil moisture and temperature, transmits data over WiFi via MQTT, and displays it on a web dashboard.
 
-## Архитектура
+## Architecture
 
 ```
-STM32 --UART--> ESP32 --MQTT--> Mosquitto --> Spring Boot --> PostgreSQL
-                                                                  |
-                                                             React Frontend
+STM32 ──UART 115200──► ESP32 ──MQTT──► Mosquitto ──► Spring Boot ──► PostgreSQL
+                                                                          │
+                                                            React frontend ◄─ HTTP /api
 ```
 
-## Компоненты
+## Components
 
-| Папка | Технология | Назначение |
-|-------|-----------|------------|
-| `garden-backend/` | Spring Boot 3.5 + Java 21 | REST API, MQTT listener, PostgreSQL |
-| `garden-frontend/` | React 18 + Vite + Tailwind | Веб-интерфейс |
-| `ESP/` | ESP32 + PlatformIO | WiFi мост: UART от STM32 → MQTT |
-| `STM/` | STM32F103 (Blue Pill) | Чтение датчиков, отправка по UART |
+| Directory | Stack | Role |
+|---|---|---|
+| `STM/` | STM32F103 (Blue Pill), STM32CubeIDE | Reads sensors, sends JSON over UART |
+| `ESP/` | ESP32 DOIT DevKit V1, PlatformIO/Arduino | UART↔WiFi bridge, publishes to MQTT |
+| `garden-backend/` | Spring Boot 3.5, Java 21, PostgreSQL | MQTT listener, REST API |
+| `garden-frontend/` | React 18, Vite, Tailwind CSS | Dashboard, charts, admin |
 
-## Железо
+## Data Flow
 
-- **STM32F103C8** — DS18B20 (температура) + ADS1115 + 4 датчика влажности почвы
-- **ESP32 DOIT DevKit V1** — TFT дисплей, WiFi, MQTT клиент
-- Измерения каждые **10 секунд**
-- Данные влажности уже в % (0–100)
+1. ESP32 wakes from deep sleep (timer every 60 min, or manual button press).
+2. ESP32 sends `MEASURE\n` over UART to STM32.
+3. STM32 reads sensors and replies with one JSON line over UART.
+4. ESP32 publishes the JSON to MQTT topic `smartgarden/{deviceId}/data`.
+5. Spring Boot receives the message and writes one `Measurement` row per field to PostgreSQL.
+6. React frontend polls `GET /api/sensors/{id}/history` to display current state and charts.
 
-### MQTT
+## MQTT Payload
 
-- Топик: `smartgarden/{deviceId}/data`
-- Payload: `{"deviceId":1,"temperature":24.50,"soil":[78,45,23,90],"battery":3812}`
-- Поле `battery` — милливольты (integer), добавлено 2026-07. Бэкенд/фронт пока игнорируют неизвестные поля — forward-compatible.
-- Брокер: Mosquitto, порт 1883
+Topic: `smartgarden/{deviceId}/data`
 
-## API
+```json
+{"deviceId":1,"temperature":24.50,"soil":[78,45,23,90],"battery":3812}
+```
 
-| Method | Endpoint | Описание |
-|--------|----------|----------|
-| GET | `/api/sensors` | Все датчики |
-| GET | `/api/sensors/{id}/history` | История измерений |
-| GET | `/api/sensors/{id}/latest-temperature` | Последние 5 температур |
-| PUT | `/api/sensors/{id}` | Обновить name/location |
-| DELETE | `/api/sensors/{id}` | Удалить датчик |
+- `soil` values are percentages 0–100 (calibrated on the STM32 side).
+- `temperature` is `null` if the DS18B20 read fails.
+- `battery` is an integer in millivolts. Backend and frontend ignore unknown fields — forward-compatible.
 
-## Frontend — страницы
+## REST API
 
-| Страница | URL | Описание |
-|----------|-----|----------|
-| Dashboard | `/` | Карточки датчиков с текущими значениями |
-| Sensors | `/sensors` | Список всех датчиков, статус online/offline |
-| Sensor Detail | `/sensors/:id` | Графики температуры и влажности, экспорт CSV |
-| Measurements | `/measurements` | Все измерения с фильтрами, экспорт CSV |
-| Admin | `/admin` | Редактировать и удалять датчики |
+All endpoints are keyed by `deviceId` (hardware ID, not internal DB id).
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/sensors` | List all sensors |
+| GET | `/api/sensors/{deviceId}/history` | All measurements, newest first |
+| GET | `/api/sensors/{deviceId}/latest-temperature` | Last 5 temperature rows |
+| PUT | `/api/sensors/{deviceId}` | Update `name` / `location` |
+| DELETE | `/api/sensors/{deviceId}` | Delete sensor and its measurements |
+
+## Frontend Pages
+
+| Page | URL | Description |
+|---|---|---|
+| Dashboard | `/` | Sensor cards with current values |
+| Sensors | `/sensors` | Sensor list with online/offline status |
+| Sensor Detail | `/sensors/:id` | Temperature and moisture charts, CSV export |
+| Measurements | `/measurements` | All measurements with filters, CSV export |
+| Admin | `/admin` | Edit and delete sensors |
+
+## Local Development
+
+### Full stack
+
+```bash
+docker compose up -d   # backend, frontend, postgres, mosquitto
+```
+
+Requires an external Docker network named `mimozalab-network`. Create it first or remove the `networks:` block from `docker-compose.yml` for a self-contained run.
+
+### Backend only
+
+```bash
+cd garden-backend
+./mvnw spring-boot:run   # port 8083, expects postgres on localhost:5432
+```
+
+Environment overrides: `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`.
+
+### Frontend only
+
+```bash
+cd garden-frontend
+cp .env.example .env    # sets VITE_API_URL=http://localhost:8083
+npm install
+npm run dev             # http://localhost:5173
+```
+
+### ESP32 firmware
+
+```bash
+cd ESP
+pio run                 # build
+pio run -t upload       # flash via COM3
+pio device monitor      # serial monitor at 115200
+```
+
+WiFi credentials, MQTT broker IP, and device ID are hardcoded at the top of `ESP/src/main.cpp`.
+
+### STM32 firmware
+
+Primary IDE: STM32CubeIDE. For headless builds:
+
+```bash
+cd STM
+make                    # output in STM/build/
+```
 
 ## CI/CD
 
-Push в `main` → GitHub Actions → Docker образ в GHCR → деплой на Hetzner по SSH.
+Push to `main` → GitHub Actions → Docker image pushed to GHCR → deployed to Hetzner via SSH.
 
-| Workflow | Триггер | Действие |
-|----------|---------|----------|
-| `backend-deploy.yml` | изменения в `garden-backend/` | сборка + деплой |
-| `frontend-deploy.yml` | изменения в `garden-frontend/` | сборка + деплой |
-| `esp32-build.yml` | изменения в `ESP/` | компиляция, артефакт |
-| `stm32-build.yml` | изменения в `STM/` | компиляция, артефакт |
-
-### GitHub Secrets
-
-| Secret | Описание |
-|--------|----------|
-| `HETZNER_HOST` | IP сервера |
-| `HETZNER_USER` | SSH пользователь |
-| `HETZNER_SSH_KEY` | Приватный SSH ключ |
-| `GHCR_TOKEN` | GitHub PAT (`write:packages`) |
-
-## Локальный запуск
-
-### Backend
-```bash
-cd garden-backend
-./mvnw spring-boot:run
-```
-
-### Frontend
-```bash
-cd garden-frontend
-cp .env.example .env
-npm install
-npm run dev
-# http://localhost:5173
-```
-
-## Сервер (Hetzner)
-
-Файлы на сервере: `/srv/projects/garden/backend/`
-
-```bash
-# Логи backend
-docker logs -f garden-backend
-
-# Перезапуск
-cd /srv/projects/garden/backend
-docker compose up -d --no-deps backend
-```
-
-## Current hardware wiring and sleep cycle
-
-Power cycle:
-
-1. ESP32 wakes up by timer every 30 minutes, or by the manual wake button.
-2. ESP32 wakes STM32 with a pulse from `GPIO25` to STM32 `PA1`.
-3. STM32 measures sensors and sends one JSON line over UART.
-4. ESP32 receives the JSON, publishes it to MQTT, then enters deep sleep.
-5. STM32 enters STOP mode after the measurement.
-
-Required wiring:
-
-| Signal | ESP32 | STM32 / other side |
+| Workflow | Trigger paths | Action |
 |---|---|---|
-| STM32 wake | `GPIO25` | `PA1` *(нестабилен, см. ниже)* |
-| STM32 UART RX | `GPIO16` (`RXD2`) | `PA9` (USART1 TX) |
-| STM32 UART TX | `GPIO17` (`TXD2`) | `PA10` (USART1 RX) |
-| Manual wake button | `GPIO33` | Button contact 1 |
-| Manual wake button GND | `GND` | Button contact 2 |
-| Diag LED (ESP) | `GPIO26` | LED anode → R → cathode → GND |
-| Diag LED (STM, bright) | — | `PB12` → R 330 Ω → LED anode → cathode → GND |
+| `backend-deploy.yml` | `garden-backend/**`, `docker-compose.yml` | Build + deploy backend |
+| `frontend-deploy.yml` | `garden-frontend/**` | Build + deploy frontend |
+| `esp32-build.yml` | `ESP/**` | Compile, upload `firmware.bin` as artifact |
+| `stm32-build.yml` | `STM/**` | Compile, upload `.bin`/`.hex` as artifacts |
+
+Required GitHub secrets: `HETZNER_HOST`, `HETZNER_USER`, `HETZNER_SSH_KEY`, `GHCR_TOKEN`.
+
+Server files live at `/srv/projects/garden/backend/`.
+
+## Hardware Wiring
+
+| Signal | ESP32 pin | Other side |
+|---|---|---|
+| UART RX (from STM) | `GPIO16` (RXD2) | STM32 `PA9` (USART1 TX) |
+| UART TX (to STM) | `GPIO17` (TXD2) | STM32 `PA10` (USART1 RX) |
+| Manual wake button | `GPIO33` | Button contact → GND |
+| Diagnostic LED | `GPIO26` | LED anode → resistor → cathode → GND |
 | Common ground | `GND` | STM32 `GND` |
 
-Yes: one button contact goes to ESP32 `GPIO33`, the other button contact goes to `GND`.
-The code uses `INPUT_PULLUP`, so no external pull-up resistor is required for a basic button.
+STM32 diagnostic LED: `PB12` → 330 Ω → LED anode → cathode → GND (active HIGH, 20 mA capable). Mirrors the built-in PC13 LED (active LOW, limited to ~3 mA — do not drive external LEDs from PC13).
 
-STM32 CubeMX settings:
+Battery voltage divider: `TP4056 OUT+` → R1 100 kΩ → `PA3` → R2 100 kΩ → GND. Tap `OUT+`, not `B+` — `B+` bypasses the DW01A protection circuit.
 
-- `PA1`: `GPIO_EXTI1`, rising edge, pull-down. **Требуется внешний резистор 4.7–10 кΩ PA1→GND** — внутренняя подтяжка (~40 кΩ) слабее наводки на проводе к ESP GPIO25 (в deep sleep у ESP этот пин в high-Z, провод работает как антенна). Без внешней подтяжки STM просыпается хаотично.
-- `EXTI1_IRQn`: enabled.
-- `PA3`: `ADC1_IN3` (analog input) — измерение напряжения батареи через делитель. Старая кнопка safe-boot удалена.
-- `PB12`: GPIO output push-pull — дублирующий диагностический LED (яркий, active HIGH). Синхронно с встроенным PC13.
-- RTC на STM32 пока не используется — таймером владеет ESP32.
+## Sleep Cycle
 
-## Диагностические LED
+- STM32 stays in **STOP mode** between measurements.
+- ESP32 stays in **deep sleep** between cycles (60-minute timer).
+- On wake: ESP32 sends `MEASURE\n` over UART → STM32 wakes via UART RX interrupt, measures, replies with JSON → ESP32 publishes to MQTT → both sleep again.
+- Manual wake: button on `GPIO33` (ESP32) triggers immediate measurement cycle.
 
-Схема: короткие импульсы 120 мс ON / 200 мс OFF, пауза 400 мс между группами, чтобы `1+2` читалось отдельно от `3`.
+## Diagnostic LEDs
 
-**STM32 — встроенный PC13 (active LOW) + внешний PB12 (active HIGH), синхронно из `LED_Blink()`.**
+Pulse pattern: 120 ms ON / 200 ms OFF, 400 ms gap between groups (so `1+2` reads distinctly from `3`).
 
-| Событие | Вспышек |
+**STM32 — PC13 (built-in, active LOW) + PB12 (external, active HIGH), driven in sync:**
+
+| Event | Blinks |
 |---|---|
-| Проснулся, начал измерение | 1 |
-| UART TX успех (`HAL_UART_Transmit` = `HAL_OK`) | 1 |
-| UART TX провалился / таймаут | 2 |
+| Woke, starting measurement | 1 |
+| UART TX success (`HAL_OK`) | 1 |
+| UART TX failed / timeout | 2 |
 
-**ESP32 — внешний LED на GPIO 26 (active HIGH).**
+**ESP32 — GPIO26 (active HIGH):**
 
-| Событие | Вспышек |
+| Event | Blinks |
 |---|---|
-| `setup()` после пробуждения из deep sleep | 1 |
-| `client.publish()` = `true` | 1 |
-| `client.publish()` = `false` | 2 |
-| `readMeasurement()` таймаут (JSON от STM не пришёл) | 3 |
+| `setup()` after wake from deep sleep | 1 |
+| `client.publish()` returned `true` | 1 |
+| `client.publish()` returned `false` | 2 |
+| `readMeasurement()` timed out (no JSON from STM) | 3 |
 
-**Читаемые последовательности** (STM + ESP за один цикл):
+**Typical readable sequences (STM group + ESP group per cycle):**
 
-- Всё ОК: `1 + 1` / `1 + 1`
-- STM отправил, MQTT провалился: `1 + 1` / `1 + 2`
-- STM отправил, ESP не принял (шум по UART): `1 + 1` / `1 + 3`
-- STM не отправил: `1 + 2` / `1 + 3`
-- ESP проснулся, STM вообще не проснулся: `—` / `1 + 3`
+| Situation | Pattern |
+|---|---|
+| All OK | `1+1` / `1+1` |
+| STM sent OK, MQTT failed | `1+1` / `1+2` |
+| STM sent OK, ESP missed it (UART noise) | `1+1` / `1+3` |
+| STM UART TX broken | `1+2` / `1+3` |
+| ESP woke, STM never woke | `—` / `1+3` |
 
-Пин `GPIO26` на ESP выбран потому что 2 и 4 заняты TFT, 25 — `WAKE_STM_PIN`, 33 — кнопка пробуждения.
-На STM пины `PC13/14/15` из backup-домена и тянут максимум ~3 мА, поэтому яркий дубль сделан на `PB12` (обычный GPIO, 20 мА).
+## Battery Monitoring (18650 Li-Ion)
 
-## Мониторинг батареи (18650)
+- Voltage measured on `PA3` (ADC1 IN3) via 100 kΩ / 100 kΩ divider.
+- Formula: `mV = raw × 3300 × 2 / 4095`, averaged over 8 samples.
+- Sampling time overridden to 71.5 cycles (CubeMX default 7.5 cycles is too short for the 50 kΩ Thévenin source impedance).
+- Thresholds in `main.c`: `BATTERY_LOW_MV = 3400` (informational), `BATTERY_CRITICAL_MV = 3100` (triggers STANDBY after 3 consecutive readings).
+- Floor at 2400 mV: anything below means PA3 is floating (divider not wired). Treated as noise, not critical battery.
+- A freshly charged 18650 reads 4026–4029 mV, stable within ±3 mV.
 
-- **Делитель:** `TP4056 OUT+` → R1 (100 кΩ) → `PA3` → R2 (100 кΩ) → `GND`.
-- **НЕ подключай к `B+`** — там нет защиты DW01A, батарея убьётся от переразряда.
-- Проверка мультиметром до подачи питания: напряжение на PA3 должно быть **ровно половина** от `OUT+`. Если больше 3.3 В — не подключай к STM, делитель разведён неправильно.
-- Все земли соединить: `TP4056 OUT-` ↔ STM `GND` ↔ ESP `GND` ↔ минус держателя батареи.
-- В JSON добавляется поле `"battery": XXXX` — милливольты.
-- Заряженная 18650 показывает 4020–4050 мВ, стабильно ±3 мВ.
+Power path: solar/USB → TP4056 (with DW01A protection) → LDO (MCP1700-3302, ~1.6 µA quiescent) → STM32 3.3 V. Never connect a 3.7–4.2 V Li-Ion directly to STM32 VDD (max 3.6 V). The AMS1117 on the Blue Pill board requires 5 V input — unusable here.
 
-**Пороги** (в `main.c`):
+## Flashing the STM32 (Clone Board)
 
-- `BATTERY_LOW_MV = 3400` — информационно, для будущего флага `"state":"low"`.
-- `BATTERY_CRITICAL_MV = 3100` — при 3 подряд отсчётах в диапазоне `2400 < mV < 3100` STM уходит в STANDBY (5 медленных вспышек и вырубается). Проснуться можно только по NRST после замены/зарядки.
-- Порог 2400 мВ (нижняя граница) совпадает со срабатыванием защиты DW01A — реальная защищённая батарея физически не может опуститься ниже. Значения меньше 2400 = висящий или неподключенный PA3, это шум, не критика.
+The board uses a clone STM32F103 (`Revision ID: Rev X`). The flash controller fails on per-sector erase but always accepts full-chip erase. **Every flash must start with a full chip erase:**
 
-## Прошивка (клон STM32F103 — важно!)
-
-Плата **клон**. Флеш-контроллер клонов ломается на per-sector erase, но всегда принимает full-chip erase. **Каждая прошивка должна начинаться с полного стирания:**
-
-- STM32CubeProgrammer → `Erasing & Programming` → галочка **`Full chip erase`** → `Start Programming`.
+- STM32CubeProgrammer → `Erasing & Programming` → check **`Full chip erase`** → `Start Programming`
 - CLI:
   ```
   STM32_Programmer_CLI -c port=SWD mode=UR -e all -w F103First.hex 0x08000000 -v -rst
   ```
 
-`HAL_DBGMCU_EnableDBGStopMode()` включен в `main()`, SWD выживает и в STOP — CubeProgrammer подключается через **Under Reset** и может остановить чип посреди цикла сна.
+`HAL_DBGMCU_EnableDBGStopMode()` is called at startup so SWD stays alive in STOP mode — CubeProgrammer's *Under Reset* mode can halt the CPU mid-sleep cycle.
 
-Если после `Full chip erase` всё равно не прошивается — **BOOT0=1 jumper** → RESET → прошить → BOOT0=0 → RESET. Это встроенный ROM-загрузчик, минует пользовательский код.
+If flashing still fails after full-chip erase: set **BOOT0 = 1** jumper → RESET → flash → BOOT0 = 0 → RESET. This uses the ROM bootloader and bypasses user code entirely.
 
-## Известные грабли (2026-07 debug session)
+## Known Issues
 
-1. **STOP-mode UART corruption.** После пробуждения из STOP первая передача через USART1 идёт мусором (`␀␀␀…`). Peripheral в неопределённом состоянии. Фикс: в `EnterStopMode()` после `SystemClock_Config()` — полный `HAL_UART_DeInit(&huart1) + MX_USART1_UART_Init() + HAL_UART_Receive_IT(...)`. Уже применён в `Core/Src/main.c`.
-2. **PA1 EXTI ловит наводку.** Провод от ESP GPIO25 к STM PA1 в deep sleep ESP превращается в антенну. Внутренняя подтяжка PA1 (~40 кΩ) слабее наводки — STM просыпается хаотично. Быстрый фикс: внешний резистор 4.7–10 кΩ PA1→GND. Правильный фикс — вообще убрать провод (roadmap п.4 в `CLAUDE.md`), но сначала нужно чтобы ESP слал `MEASURE\n` по UART вместо импульса на пине.
-3. **PA3 болтается без делителя.** Если делитель батареи ещё не припаян, PA3 показывает случайные значения (0–3300 мВ). Отсюда `battery:884` и подобная ерунда. Ничего не сломано — просто аналоговый вход в воздухе.
-4. **ADC даёт неправильные значения с CubeMX-дефолтом.** Sampling time 7.5 циклов не хватает для делителя 100 к / 100 к (Thevenin ~50 кΩ). В `USER CODE ADC1_Init 2` переопределено на 71.5 циклов. Калибровка `HAL_ADCEx_Calibration_Start(&hadc1)` вызывается в `USER CODE BEGIN 2` — CubeMX её не генерирует.
+1. **STOP-mode UART corruption.** After waking from STOP, the first USART1 TX sends garbage bytes. Fix: in `EnterStopMode()`, after `SystemClock_Config()`, do a full `HAL_UART_DeInit(&huart1)` + `MX_USART1_UART_Init()` + `HAL_UART_Receive_IT(...)`. Already applied in `Core/Src/main.c`.
 
-## Дальнейшая документация
+2. **PA1 EXTI picks up antenna noise.** When ESP32 is in deep sleep, `GPIO25` is high-impedance. The wire from `GPIO25` to STM32 `PA1` acts as an antenna. The internal pull-down (~40 kΩ) is too weak — STM32 wakes at random. Quick fix: external 4.7–10 kΩ pull-down resistor between `PA1` and GND. Proper fix: remove the wire entirely and rely on `MEASURE\n` over UART (see roadmap item 4 in `CLAUDE.md`).
 
-Детальный developer guide — **[`CLAUDE.md`](CLAUDE.md)**. Там же roadmap известных TODO (10 пунктов, приоритезированных), архитектура целевого железа (4 группы × 4 датчика влажности + 4 DS18B20), design decisions по downlink command channel для полива.
+3. **PA3 floating without the voltage divider.** If the battery divider is not wired, PA3 reads random values. `battery` field will show noise. Not a bug — just an unconnected analog input.
 
-## STM32 command-line build
+4. **ADC wrong readings with CubeMX default sampling time.** The default 7.5-cycle sampling time is insufficient for the 50 kΩ Thévenin impedance of the 100 kΩ / 100 kΩ divider. Overridden to 71.5 cycles in `USER CODE ADC1_Init 2`. ADC calibration (`HAL_ADCEx_Calibration_Start`) is called in `USER CODE BEGIN 2` — CubeMX does not generate this call automatically.
 
-From PowerShell:
+## Further Reading
 
-```powershell
-cd C:\Garden\Workspace\STM
-powershell -ExecutionPolicy Bypass -File .\build.ps1 -Config Release -Clean
-```
-
-Firmware outputs:
-
-```text
-C:\Garden\Workspace\STM\build\cli\Release\F103First.elf
-C:\Garden\Workspace\STM\build\cli\Release\F103First.hex
-C:\Garden\Workspace\STM\build\cli\Release\F103First.bin
-```
-
-For STM32CubeProgrammer, select:
-
-```text
-C:\Garden\Workspace\STM\build\cli\Release\F103First.hex
-```
-
-If flashing the `.bin` instead, use start address:
-
-```text
-0x08000000
-```
+Full developer guide, roadmap (10 items), target hardware architecture (4 groups × 16 moisture sensors + 4 DS18B20), and design decisions for the irrigation downlink channel: **[`CLAUDE.md`](CLAUDE.md)**.
