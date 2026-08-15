@@ -127,7 +127,10 @@ HAL_StatusTypeDef MeasureAndDisplay(void) {
 
     uint32_t raw1, raw2, raw3, raw4;
     uint32_t soil1, soil2, soil3, soil4;
+    uint8_t ads_ready;
 
+    /* Диагностика: distinguishes an I2C/ADS1115 failure from a real wet reading. */
+    ads_ready = (ADS1115_IsReady(&ads) == HAL_OK);
     raw1 = MoistureSensor_Read(ADS1115_CHANNEL_0);
     raw2 = MoistureSensor_Read(ADS1115_CHANNEL_1);
     raw3 = MoistureSensor_Read(ADS1115_CHANNEL_2);
@@ -148,24 +151,32 @@ HAL_StatusTypeDef MeasureAndDisplay(void) {
     {
         snprintf(uart_buffer,
             sizeof(uart_buffer),
-            "{\"deviceId\":1,"
+            "{\"deviceId\":2,"
             "\"temperature\":%d.%02d,"
             "\"soil\":[%lu,%lu,%lu,%lu],"
+            "\"adsReady\":%s,"
+            "\"soilRaw\":[%lu,%lu,%lu,%lu],"
             "\"battery\":%lu}\r\n",
             temp_integer,
             temp_fraction,
             soil1, soil2, soil3, soil4,
+            ads_ready ? "true" : "false",
+            raw1, raw2, raw3, raw4,
             last_battery_mV);
     }
     else
     {
         snprintf(uart_buffer,
             sizeof(uart_buffer),
-            "{\"deviceId\":1,"
+            "{\"deviceId\":2,"
             "\"temperature\":null,"
             "\"soil\":[%lu,%lu,%lu,%lu],"
+            "\"adsReady\":%s,"
+            "\"soilRaw\":[%lu,%lu,%lu,%lu],"
             "\"battery\":%lu}\r\n",
             soil1, soil2, soil3, soil4,
+            ads_ready ? "true" : "false",
+            raw1, raw2, raw3, raw4,
             last_battery_mV);
     }
 
@@ -252,8 +263,9 @@ static void EnterStopMode(void)
 
     HAL_NVIC_DisableIRQ(EXTI15_10_IRQn);
 
-    /* Полный ре-init UART после STOP. Без этого первая TX после пробуждения
-       выходит мусором (␀␀␀…) — peripheral после STOP в неопределённом состоянии. */
+    /* Полный ре-init периферии после STOP — все периферийные блоки после STOP
+       в неопределённом состоянии. UART без этого шлёт мусор, I2C зависает. */
+    MX_I2C1_Init();
     MX_USART1_UART_Init();
     HAL_UART_Receive_IT(&huart1, &rx_data, 1);
 }
