@@ -35,7 +35,7 @@ jobs:
           cp .pio/build/esp32doit-devkit-v1/firmware.bin release-assets/esp32-firmware.bin
           cp .pio/build/esp32doit-devkit-v1/bootloader.bin release-assets/esp32-bootloader.bin
           cp .pio/build/esp32doit-devkit-v1/partitions.bin release-assets/esp32-partitions.bin
-          ~/.platformio/packages/tool-esptoolpy/esptool.py --chip esp32 merge_bin \
+          python ~/.platformio/packages/tool-esptoolpy/esptool.py --chip esp32 merge_bin \
             -o release-assets/esp32-merged-flash.bin \
             0x1000 .pio/build/esp32doit-devkit-v1/bootloader.bin \
             0x8000 .pio/build/esp32doit-devkit-v1/partitions.bin \
