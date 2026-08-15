@@ -1,0 +1,69 @@
+name: Release Firmware
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      - name: Build ESP32 firmware
+        working-directory: ESP
+        run: pio run
+
+      - name: Create full ESP32 flash image
+        working-directory: ESP
+        run: |
+          mkdir -p release-assets
+          cp .pio/build/esp32doit-devkit-v1/firmware.bin release-assets/esp32-firmware.bin
+          cp .pio/build/esp32doit-devkit-v1/bootloader.bin release-assets/esp32-bootloader.bin
+          cp .pio/build/esp32doit-devkit-v1/partitions.bin release-assets/esp32-partitions.bin
+          ~/.platformio/packages/tool-esptoolpy/esptool.py --chip esp32 merge_bin \
+            -o release-assets/esp32-merged-flash.bin \
+            0x1000 .pio/build/esp32doit-devkit-v1/bootloader.bin \
+            0x8000 .pio/build/esp32doit-devkit-v1/partitions.bin \
+            0x10000 .pio/build/esp32doit-devkit-v1/firmware.bin
+
+      - name: Install ARM GCC toolchain
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi
+
+      - name: Build STM32 firmware
+        working-directory: STM
+        run: make
+
+      - name: Collect STM32 firmware
+        run: |
+          mkdir -p release-assets
+          cp STM/build/F103First.hex release-assets/stm32-firmware.hex
+          cp STM/build/F103First.bin release-assets/stm32-firmware.bin
+
+      - name: Attach firmware to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            ESP/release-assets/esp32-firmware.bin
+            ESP/release-assets/esp32-bootloader.bin
+            ESP/release-assets/esp32-partitions.bin
+            ESP/release-assets/esp32-merged-flash.bin
+            release-assets/stm32-firmware.hex
+            release-assets/stm32-firmware.bin

@@ -12,7 +12,7 @@ const int   MQTT_PORT   = 1883;
 const char* MQTT_USER   = "esp32";
 const char* MQTT_PASS   = "REDACTED_MQTT_PASSWORD";
 
-const int DEVICE_ID = 1;
+const int DEVICE_ID = 2;
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -132,6 +132,38 @@ String readMeasurement()
   return "";
 }
 
+// Временно выводит стартовую диагностику STM32 (включая "ADS1115 OK" / "not found")
+// в USB Serial Monitor ESP32. Вызывается до отправки MEASURE, поэтому не мешает JSON.
+void printStmStartupDiagnostics()
+{
+  const unsigned long timeoutMs = 800;
+  unsigned long lastReceivedAt = millis();
+  bool receivedAnything = false;
+
+  Serial.println("STM32 startup diagnostics:");
+
+  while (millis() - lastReceivedAt < timeoutMs) {
+    while (Serial2.available()) {
+      String line = Serial2.readStringUntil('\n');
+      line.trim();
+
+      if (line.length() > 0) {
+        Serial.print("STM32: ");
+        Serial.println(line);
+        receivedAnything = true;
+      }
+
+      lastReceivedAt = millis();
+    }
+
+    delay(10);
+  }
+
+  if (!receivedAnything) {
+    Serial.println("STM32: no startup diagnostics received");
+  }
+}
+
 String topicForPayload(const String& payload)
 {
   const String key = "\"deviceId\":";
@@ -185,6 +217,7 @@ void setup()
 {
   Serial.begin(115200);
   Serial2.begin(115200, SERIAL_8N1, RXD2, TXD2);
+  printStmStartupDiagnostics();
 
   pinMode((uint8_t)WAKE_BUTTON_PIN, INPUT_PULLUP);
 
