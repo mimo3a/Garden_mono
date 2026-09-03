@@ -22,9 +22,9 @@ TFT_eSPI tft = TFT_eSPI();
 #define TXD2 17
 #define WAKE_BUTTON_PIN GPIO_NUM_33
 
-// Диагностический LED (внешний, через резистор на GND). Активный HIGH.
-// Пины 2 и 4 заняты TFT (DC/RST), поэтому берём GPIO 26 — свободен и
-// безопасен, RTC-домен deep_sleep его не трогает.
+// External diagnostic LED connected through a resistor to GND. Active HIGH.
+// GPIO 2 and 4 are used by the TFT (DC/RST), so GPIO 26 is used instead.
+// It remains unaffected by the RTC domain during deep sleep.
 #define DIAG_LED_PIN 26
 
 const uint64_t SLEEP_INTERVAL_US = 60ULL * 60ULL * 1000000ULL;
@@ -33,11 +33,11 @@ const unsigned long MQTT_FLUSH_MS = 500;
 
 // -------------------- DIAG LED --------------------
 
-// Мигает N раз с короткими импульсами. Схема:
-//   Проснулся                → 1
-//   UART от STM не пришёл    → 3
-//   MQTT публикация OK       → 1
-//   MQTT публикация FAIL     → 2
+// Blink codes:
+//   Wake-up                 -> 1 blink
+//   No UART data from STM32 -> 3 blinks
+//   MQTT publish success    -> 1 blink
+//   MQTT publish failure    -> 2 blinks
 void diagBlink(uint8_t count)
 {
   for (uint8_t i = 0; i < count; i++) {
@@ -132,8 +132,9 @@ String readMeasurement()
   return "";
 }
 
-// Временно выводит стартовую диагностику STM32 (включая "ADS1115 OK" / "not found")
-// в USB Serial Monitor ESP32. Вызывается до отправки MEASURE, поэтому не мешает JSON.
+// Forward STM32 startup diagnostics (for example "ADS1115 OK" or "not found")
+// to the ESP32 USB serial monitor. This runs before the MEASURE command is sent,
+// so diagnostic lines do not interfere with the JSON measurement payload.
 void printStmStartupDiagnostics()
 {
   const unsigned long timeoutMs = 800;
@@ -223,10 +224,11 @@ void setup()
 
   pinMode(DIAG_LED_PIN, OUTPUT);
   digitalWrite(DIAG_LED_PIN, LOW);
-  diagBlink(1);  // проснулся
+  diagBlink(1);  // Wake-up indication
 
-  /* Будим STM32 сразу — пока ESP коннектится к WiFi, STM измеряет.
-     JSON буферизуется в UART RX буфере ESP (256 байт), readMeasurement() прочитает позже. */
+  /* Wake the STM32 immediately. While the ESP32 connects to Wi-Fi, the STM32
+     performs the measurement. The JSON response is buffered in the ESP32 UART
+     RX buffer and is consumed later by readMeasurement(). */
   requestMeasurement();
 
   tft.init();
@@ -251,24 +253,25 @@ void setup()
       screenLine("MQTT SENT", 120);
       Serial.print("MQTT SENT: ");
       Serial.println(topic);
-      diagBlink(1);  // отправлено на сервер
+      diagBlink(1);  // Published successfully
     } else {
       screenLine("MQTT FAIL", 120);
       Serial.println("MQTT FAIL");
-      diagBlink(2);  // MQTT провалился
+      diagBlink(2);  // MQTT publish failed
     }
 
-    // ACK в STM — независимо от результата MQTT.
-    // STM ждёт этот сигнал чтобы лечь спать (таймаут 30 сек на STM стороне).
+    // Send ACK to the STM32 regardless of the MQTT result.
+    // The STM32 waits for this signal before entering STOP mode and has
+    // its own 30-second ACK timeout as a fallback.
     Serial2.println("OK");
     Serial2.flush();
     delay(50);
   } else {
     screenHeader("NO DATA");
     Serial.println("No valid STM32 JSON received before timeout");
-    diagBlink(3);  // UART от STM не пришёл
-    // ACK не шлём — STM либо не проснулся (уже в STOP),
-    // либо сам уйдёт в STOP по таймауту 30 сек.
+    diagBlink(3);  // No UART measurement received from STM32
+    // Do not send ACK here. The STM32 either did not wake or will return to
+    // STOP mode on its own after the 30-second timeout.
   }
 
   unsigned long flushUntil = millis() + MQTT_FLUSH_MS;
