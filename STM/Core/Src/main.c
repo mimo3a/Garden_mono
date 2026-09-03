@@ -53,20 +53,23 @@ uint8_t rx_data;
 char rx_buffer[32];
 uint8_t rx_index = 0;
 
-/* Батарея замеряется через ADC1_IN3 (PA3), делитель 100k+100k между BAT+ и GND.
-   hadc1 объявлен CubeMX'ом выше, ReadBatteryMillivolts() читает через него. */
+/* Battery voltage is measured via ADC1_IN3 (PA3).
+ * A 100k/100k voltage divider is connected between BAT+ and GND.
+ * ReadBatteryMillivolts() uses the CubeMX-generated hadc1 handle.
+ */
 
-/* Последнее измеренное напряжение батареи, мВ.
-   Начальное значение 4200 = полный заряд — чтобы первый цикл после
-   power-on не решил сразу что «критично» и не ушёл в STANDBY. */
+/* Last measured battery voltage in mV.
+ * Initialize to 4200 mV to prevent an immediate critical-battery shutdown
+ * during the first measurement cycle after power-on.
+ */
 static uint32_t last_battery_mV = 4200;
 
-/* Пороги для одной ячейки 18650 Li-Ion. */
-#define BATTERY_LOW_MV        3400U   /* ниже — флажок в JSON  */
-#define BATTERY_CRITICAL_MV   3100U   /* ниже — прощальный blink и STANDBY */
-#define BATTERY_VREF_MV       3300U   /* VDD/VREF+ STM32 после LDO */
+/* Voltage thresholds for a single 18650 Li-Ion cell. */
+#define BATTERY_LOW_MV        3400U   /* Set low-battery flag in JSON below this level */
+#define BATTERY_CRITICAL_MV   3100U   /* Enter STANDBY after warning blink below this level */
+#define BATTERY_VREF_MV       3300U   /* STM32 VDD/VREF+ after LDO */
 #define BATTERY_ADC_MAX       4095U   /* 12-bit ADC */
-#define BATTERY_DIVIDER       2U      /* R1=R2=100k → ×2 */
+#define BATTERY_DIVIDER       2U      /* R1=R2=100k -> x2 */
 
 /* USER CODE END PV */
 
@@ -94,17 +97,18 @@ static void CriticalBatteryShutdown(void);
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 
 	if(GPIO_Pin == GPIO_PIN_10){
-		/* PA10 = UART1 RX переконфигурирован как EXTI перед STOP.
-		   Стартовый бит первого байта от ESP будит MCU без провода. */
+		/* PA10 (USART1 RX) is reconfigured as EXTI before entering STOP mode.
+		 * The start bit of the first byte from the ESP32 wakes the MCU.
+		 */
 		measure_flag = 1;
 
 	}
 }
 
-/* Диагностика через встроенный LED на PC13 (инверсная: LOW = ON)
-   и внешний параллельный LED на PB12 (прямая: HIGH = ON).
-   Оба зажигаются/гасятся синхронно.
-   1 короткая вспышка = OK, 2 = ошибка, 3 = отдельная ошибка (см. main loop). */
+/* LED diagnostics use the onboard PC13 LED (active LOW) and an external
+ * PB12 LED (active HIGH). Both LEDs are switched synchronously.
+ * One short blink = OK, two = error, three = separate error condition.
+ */
 static void LED_Blink(uint8_t count)
 {
     for (uint8_t i = 0; i < count; i++)
@@ -116,7 +120,7 @@ static void LED_Blink(uint8_t count)
         HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, GPIO_PIN_RESET); /* PB12 OFF */
         HAL_Delay(200);
     }
-    HAL_Delay(400); /* пауза между группами вспышек */
+    HAL_Delay(400); /* Pause between blink groups */
 }
 
 
@@ -129,7 +133,7 @@ HAL_StatusTypeDef MeasureAndDisplay(void) {
     uint32_t soil1, soil2, soil3, soil4;
     uint8_t ads_ready;
 
-    /* Диагностика: distinguishes an I2C/ADS1115 failure from a real wet reading. */
+    /* Distinguish an I2C/ADS1115 failure from a valid wet-soil reading. */
     ads_ready = (ADS1115_IsReady(&ads) == HAL_OK);
     raw1 = MoistureSensor_Read(ADS1115_CHANNEL_0);
     raw2 = MoistureSensor_Read(ADS1115_CHANNEL_1);
@@ -188,7 +192,7 @@ HAL_StatusTypeDef MeasureAndDisplay(void) {
                              2000);
 }
 
-/* Читает батарею: 8 сэмплов, усреднение, учёт делителя ×2. */
+/* Read battery voltage using eight ADC samples and apply the x2 divider ratio. */
 static uint32_t ReadBatteryMillivolts(void)
 {
     uint32_t sum = 0;
@@ -203,8 +207,9 @@ static uint32_t ReadBatteryMillivolts(void)
     return (raw * BATTERY_VREF_MV * BATTERY_DIVIDER) / BATTERY_ADC_MAX;
 }
 
-/* Критический разряд: 5 медленных морганий обоих LED (по секунде на такт),
-   потом STANDBY. Выход из STANDBY — только через NRST/power-on. */
+/* Critical battery shutdown: blink both LEDs five times, then enter STANDBY.
+ * The MCU can only recover from STANDBY through NRST or a new power cycle.
+ */
 static void CriticalBatteryShutdown(void)
 {
     for (int i = 0; i < 5; i++)
@@ -217,7 +222,7 @@ static void CriticalBatteryShutdown(void)
         HAL_Delay(500);
     }
     HAL_PWR_EnterSTANDBYMode();
-    /* Сюда не возвращаемся — STANDBY = reset при пробуждении. */
+    /* Execution does not return here; wake-up from STANDBY causes a reset. */
 }
 
 uint8_t Moisture_ToPercent(uint32_t raw, uint32_t dry, uint32_t wet)
@@ -236,21 +241,22 @@ static void EnterStopMode(void)
         return;
     }
 
-    /* Оба LED выключить перед сном, чтобы не жрать ток в STOP. */
+    /* Disable both LEDs before STOP mode to minimize power consumption. */
     HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);   /* PC13 OFF (active LOW)  */
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, GPIO_PIN_RESET); /* PB12 OFF (active HIGH) */
 
-    /* DeInit UART — освобождает PA10 (RX pin) для переконфигурации в EXTI. */
+    /* Deinitialize UART to release PA10 (RX) for EXTI wake-up configuration. */
     HAL_UART_AbortReceive_IT(&huart1);
     HAL_UART_DeInit(&huart1);
 
-    /* PA10 (UART1 RX) → EXTI falling edge. UART idle = HIGH; стартовый
-       бит первого байта от ESP тянет линию LOW — этого достаточно чтобы
-       разбудить MCU из STOP без отдельного провода GPIO25→PA1. */
+    /* Configure PA10 (USART1 RX) as falling-edge EXTI.
+     * UART idle state is HIGH; the first start bit from the ESP32 pulls the
+     * line LOW and wakes the MCU from STOP mode without an extra wake-up wire.
+     */
     GPIO_InitTypeDef GPIO_InitStruct = {0};
     GPIO_InitStruct.Pin  = GPIO_PIN_10;
     GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
-    GPIO_InitStruct.Pull = GPIO_PULLUP; /* удерживает HIGH пока ESP в sleep (TX флоатит) */
+    GPIO_InitStruct.Pull = GPIO_PULLUP; /* Keep HIGH while ESP32 TX is floating in sleep */
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
     HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
     HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
@@ -263,8 +269,7 @@ static void EnterStopMode(void)
 
     HAL_NVIC_DisableIRQ(EXTI15_10_IRQn);
 
-    /* Полный ре-init периферии после STOP — все периферийные блоки после STOP
-       в неопределённом состоянии. UART без этого шлёт мусор, I2C зависает. */
+    /* Reinitialize peripherals after STOP mode before communication resumes. */
     MX_I2C1_Init();
     MX_USART1_UART_Init();
     HAL_UART_Receive_IT(&huart1, &rx_data, 1);
@@ -313,14 +318,13 @@ int main(void)
   MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
 
-  /* Держать SWD живым в low-power режимах — полезно для отладки. */
+  /* Keep SWD debugging enabled in low-power modes. */
   __HAL_RCC_PWR_CLK_ENABLE();
   HAL_DBGMCU_EnableDBGSleepMode();
   HAL_DBGMCU_EnableDBGStopMode();
   HAL_DBGMCU_EnableDBGStandbyMode();
 
-  /* Калибровка ADC1 — обязательна на F103 для точности >±5 LSB.
-     CubeMX её не генерит, делаем сами один раз при старте. */
+  /* Calibrate ADC1 once at startup to improve conversion accuracy on STM32F103. */
   HAL_ADCEx_Calibration_Start(&hadc1);
 
   HAL_UART_Receive_IT(&huart1, &rx_data, 1);
@@ -340,24 +344,25 @@ int main(void)
       HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
   }
 
-  // !!! ВАЖНО: Включаем счетчик циклов для delay_us ДО инициализации дисплея !!!
+  /* Initialize the DWT cycle counter before using microsecond delays. */
   DS18B20_DWT_Init();
 
   HAL_Delay(10);
   
-  // Тест LED - мигнем 3 раза для проверки работы
-  // Blue Pill: LED активен когда PC13 = LOW (инверсная логика)
-  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET); // LED выключен
+  /* Blink the onboard LED three times as a startup self-test.
+   * Blue Pill PC13 LED uses active-low logic.
+   */
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET); /* LED off */
   HAL_Delay(500);
   
   for(int i = 0; i < 3; i++) {
-      HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);   // LED включен
+      HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);   /* LED on */
       HAL_Delay(200);
-      HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET); // LED выключен
+      HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET); /* LED off */
       HAL_Delay(200);
   }
   
-  HAL_Delay(500); // Пауза для проверки
+  HAL_Delay(500); /* Startup self-test pause */
   HAL_Delay(STARTUP_DEBUG_WINDOW_MS);
   /* USER CODE END 2 */
 
@@ -370,15 +375,15 @@ int main(void)
     {
         measure_flag = 0;
         ack_received = 0;
-        LED_Blink(1);                                 /* проснулись */
+        LED_Blink(1);                                 /* Wake-up indication */
         HAL_StatusTypeDef tx = MeasureAndDisplay();
-        LED_Blink(tx == HAL_OK ? 1 : 2);              /* 1 = отправлено, 2 = ошибка UART */
+        LED_Blink(tx == HAL_OK ? 1 : 2);              /* 1 = sent, 2 = UART error */
 
-        /* Критическая батарея — прощай, до замены/зарядки.
-           Нижний порог 2400 мВ соответствует срабатыванию DW01A: ниже этого
-           реальная батарея физически не может быть (модуль защиты отсекает
-           нагрузку). Всё что ниже — «делитель не подключён / PA3 болтается».
-           Требуются 3 замера подряд в диапазоне 2400..CRITICAL мВ. */
+        /* Critical battery protection.
+         * A lower limit of 2400 mV corresponds to the DW01A protection cutoff;
+         * values below that indicate an unconnected divider or floating PA3.
+         * Require three consecutive readings in the 2400..CRITICAL mV range.
+         */
         static uint8_t critical_streak = 0;
         if (last_battery_mV > 2400U && last_battery_mV < BATTERY_CRITICAL_MV)
         {
@@ -393,9 +398,10 @@ int main(void)
             critical_streak = 0;
         }
 
-        /* Ждём ACK от ESP максимум 30 сек. HAL_UART_RxCpltCallback выставит
-           ack_received когда придёт "OK\n". По таймауту тоже идём спать —
-           защита батареи от зависания если ESP не ответил. */
+        /* Wait up to 30 seconds for an ACK from the ESP32.
+         * HAL_UART_RxCpltCallback sets ack_received after receiving "OK\n".
+         * On timeout the MCU still enters sleep to prevent battery drain.
+         */
         uint32_t t0 = HAL_GetTick();
         while (!ack_received && (HAL_GetTick() - t0) < 30000UL)
         {
@@ -500,11 +506,12 @@ static void MX_ADC1_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN ADC1_Init 2 */
-  /* Override sampling time: 7.5 циклов (625 нс) слишком коротко для источника с
-     Thevenin ~50 кΩ (наш делитель 100k+100k). ADC не успевает зарядить sample cap →
-     показания занижены. 71.5 циклов ≈ 6 мкс — с большим запасом. Лучше это же
-     значение выставить и в CubeMX (Parameter Settings → Rank 1 → Sampling Time),
-     чтобы override не был нужен. */
+  /* Override the sampling time: 7.5 cycles (625 ns) is too short for a source
+   * with approximately 50 kOhm Thevenin resistance (100k/100k divider).
+   * The ADC sample capacitor cannot fully charge and the reading is biased low.
+   * 71.5 cycles is approximately 6 us and provides sufficient acquisition time.
+   * The same value should also be configured in CubeMX to avoid this override.
+   */
   sConfig.SamplingTime = ADC_SAMPLETIME_71CYCLES_5;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
   {
