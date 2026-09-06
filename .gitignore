@@ -32,3 +32,8 @@ STM/*.hex
 .metadata/
 .vscode/
 *.iml
+
+# STM32CubeIDE build artifacts
+**/Debug/
+**/Release/
+.metadata/
