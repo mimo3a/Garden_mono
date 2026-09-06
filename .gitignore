@@ -25,6 +25,11 @@ STM/*.elf
 STM/*.bin
 STM/*.hex
 
+# STM32CubeIDE build & workspace
+**/Debug/
+**/Release/
+.metadata/
+
 # Environment
 .env
 
