@@ -67,7 +67,13 @@ uint8_t  g_mutex_ok   = 0;  /* 1=мьютекс захватился, 0=тайм
 
 void SensorTask(void *argument)
 {
-    char buf[64];
+    char buf[256];
+    typedef struct 
+    {
+         uint8_t status; 
+         uint8_t ch; 
+         int16_t raw;
+    } ChReading;
 
     for (;;)
     {
@@ -76,16 +82,42 @@ void SensorTask(void *argument)
         if (osMutexAcquire(i2c1MutexHandle, pdMS_TO_TICKS(100)) == osOK)
         {
             g_mutex_ok = 1;
-            HAL_StatusTypeDef status = ADS1115_ReadChannelRaw(&ads, ADS1115_CHANNEL_0, &g_ads_raw);
-            osMutexRelease(i2c1MutexHandle);
+            ChReading raw[4];
 
-            g_ads_status = (uint8_t)status;
+            for (int ch = 0; ch < 4; ch++) {
+                HAL_StatusTypeDef status = ADS1115_ReadChannelRaw(&ads, (ADS1115_Channel_t)ch, &g_ads_raw);
+                
 
-            if (status == HAL_OK)
-            {
-                snprintf(buf, sizeof(buf), "ADS CH0: %d\r\n", g_ads_raw);
-                HAL_UART_Transmit(&huart1, (uint8_t *)buf, strlen(buf), HAL_MAX_DELAY);
+                g_ads_status = (uint8_t)status;
+
+                if (status == HAL_OK)
+                    {
+                        raw[ch].status = g_ads_status;
+                        raw[ch].ch = ch;
+                        raw[ch].raw = g_ads_raw;
+                    }
+                else
+                {
+                   raw[ch].status = g_ads_status;
+                   raw[ch].ch = ch;
+                   raw[ch].raw = -1;                    
+                }
+             }
+        osMutexRelease(i2c1MutexHandle);
+        /* make JSON*/
+        int pos = 0;
+        pos += snprintf(buf + pos, sizeof(buf) - pos, "[");
+        for (int ch = 0; ch < 4; ch++) {
+            
+            pos += snprintf(buf + pos, sizeof(buf) - pos, "{\"status\":%d, \"ch\":%d, \"raw\":%d}", raw[ch].status, raw[ch].ch, raw[ch].raw);
+            if (ch < 3) {
+                pos += snprintf(buf + pos, sizeof(buf) - pos, ", ");
             }
+        }
+        pos += snprintf(buf + pos, sizeof(buf) - pos, "]\r\n");
+       
+        HAL_UART_Transmit(&huart1, (uint8_t *)buf, strlen(buf), HAL_MAX_DELAY);
+    
         }
         else
         {
