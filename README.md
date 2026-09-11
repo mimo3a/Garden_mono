@@ -2,7 +2,7 @@
 
 Smart Garden is a real hardware-and-software project for monitoring soil moisture, temperature, and battery status. The system combines an STM32 sensor node, an ESP32 Wi-Fi/MQTT gateway, a Spring Boot backend, PostgreSQL, and a React dashboard.
 
-The current stable hardware implementation uses an **STM32F103 (Blue Pill)**. A migration toward an **STM32L4 + FreeRTOS** architecture is in progress on dedicated feature branches.
+The current stable hardware implementation uses an **STM32F103 (Blue Pill)**. The `main` branch is kept as the working/release baseline. Ongoing STM32L476 + FreeRTOS development lives on the dedicated `develop` branch.
 
 ## Key Engineering Features
 
@@ -50,11 +50,12 @@ Battery ADC ────────────────────►   �
 | Directory | Stack | Role |
 |---|---|---|
 | `STM/` | STM32F103, STM32CubeIDE, C/HAL | Stable sensor-node firmware |
-| `STM-L467/` | STM32L4 development | Experimental next-generation firmware |
 | `ESP/` | ESP32 DOIT DevKit V1, PlatformIO/Arduino | UART-to-Wi-Fi/MQTT gateway |
 | `garden-backend/` | Spring Boot 3.5, Java 21, PostgreSQL | MQTT ingestion and REST API |
 | `garden-frontend/` | React 18, Vite, Tailwind CSS | Dashboard, charts and administration |
 | `mosquitto/` | Eclipse Mosquitto | MQTT broker configuration |
+
+The next-generation STM32L476 + FreeRTOS firmware is intentionally kept off the release branch and is developed in `develop` under `STM-L476-FreeRTOS/`.
 
 ## Measurement Cycle
 
@@ -267,14 +268,12 @@ GitHub Actions builds the software components automatically.
 | `esp32-build.yml` | `ESP/**` | Compile ESP32 firmware |
 | `stm32-build.yml` | `STM/**` | Compile STM32 firmware |
 
-## Current Development
+## Branching Model
 
-The stable implementation on `main` uses the STM32F103. Development work toward an STM32L4/FreeRTOS version is kept on feature branches so the working baseline remains reproducible.
-
-Current development branches include:
-
-- `feature/stm32l467-freertos`
-- `feature/stm32l476-json`
+- **`main`** — tested, working release baseline. It contains the STM32F103 implementation that is currently used on the hardware.
+- **`develop`** — active development and integration branch. The STM32L476 + FreeRTOS migration lives here under `STM-L476-FreeRTOS/`.
+- Short-lived `feature/*` branches should branch from `develop` and be merged back into `develop` after testing.
+- A tested development milestone is promoted from `develop` to `main` only when it is ready to become the new working baseline.
 
 ## Known Engineering Issues / Lessons Learned
 
@@ -286,7 +285,7 @@ Current development branches include:
 
 ## Next Steps
 
-- complete STM32L4 + FreeRTOS migration
+- complete STM32L476 + FreeRTOS migration on `develop`
 - move runtime configuration out of firmware constants
 - add real-hardware photos and wiring overview
 - add a short demonstration video
