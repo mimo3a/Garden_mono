@@ -400,11 +400,13 @@ int main(void)
 
         /* Wait up to 30 seconds for an ACK from the ESP32.
          * HAL_UART_RxCpltCallback sets ack_received after receiving "OK\n".
-         * On timeout the MCU still enters sleep to prevent battery drain.
+         * WFI keeps the CPU asleep between interrupts while preserving the
+         * 30-second timeout. SysTick and UART interrupts wake the core.
          */
         uint32_t t0 = HAL_GetTick();
         while (!ack_received && (HAL_GetTick() - t0) < 30000UL)
         {
+            __WFI();
         }
     }
 
@@ -698,7 +700,7 @@ void Error_Handler(void)
 }
 #ifdef USE_FULL_ASSERT
 /**
-  * @brief  Reports the name of the source file and the source line number
+  * @brief  Reports the name of the source file name and the source line number
   *         where the assert_param error has occurred.
   * @param  file: pointer to the source file name
   * @param  line: assert_param error line source number
