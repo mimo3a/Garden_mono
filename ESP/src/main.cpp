@@ -28,6 +28,8 @@ TFT_eSPI tft = TFT_eSPI();
 #define DIAG_LED_PIN 26
 
 const uint64_t SLEEP_INTERVAL_US = 60ULL * 60ULL * 1000000ULL;
+const unsigned long WIFI_CONNECT_TIMEOUT_MS = 15000;
+const unsigned long MQTT_CONNECT_TIMEOUT_MS = 15000;
 const unsigned long MEASURE_TIMEOUT_MS = 60000;
 const unsigned long MQTT_FLUSH_MS = 500;
 
@@ -68,7 +70,7 @@ void screenLine(const String& text, int y)
 
 // -------------------- WIFI --------------------
 
-void connectWiFi()
+bool connectWiFi()
 {
   IPAddress local_IP(192, 168, 178, 100);
   IPAddress gateway(192, 168, 178, 1);
@@ -78,35 +80,51 @@ void connectWiFi()
 
   WiFi.begin(WIFI_SSID, WIFI_PASS);
 
-  while (WiFi.status() != WL_CONNECTED) {
+  const unsigned long startedAt = millis();
+  while (WiFi.status() != WL_CONNECTED &&
+         millis() - startedAt < WIFI_CONNECT_TIMEOUT_MS) {
     delay(500);
     Serial.print(".");
   }
 
   Serial.println();
+
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi connection timeout");
+    screenLine("WiFi FAIL", 40);
+    return false;
+  }
+
   Serial.println("WiFi connected!");
   Serial.println(WiFi.localIP());
-
   screenLine("WiFi OK", 40);
+  return true;
 }
 
 // -------------------- MQTT --------------------
 
-void connectMQTT()
+bool connectMQTT()
 {
-  while (!client.connected()) {
+  const unsigned long startedAt = millis();
+
+  while (!client.connected() &&
+         millis() - startedAt < MQTT_CONNECT_TIMEOUT_MS) {
 
     String clientId = "esp32-" + String(DEVICE_ID);
 
     if (client.connect(clientId.c_str(), MQTT_USER, MQTT_PASS)) {
-
       Serial.println("MQTT connected");
       screenLine("MQTT OK", 70);
-    } else {
-      Serial.println("MQTT connection failed");
-      delay(2000);
+      return true;
     }
+
+    Serial.println("MQTT connection failed");
+    delay(2000);
   }
+
+  Serial.println("MQTT connection timeout");
+  screenLine("MQTT FAIL", 70);
+  return false;
 }
 
 String readMeasurement()
@@ -235,10 +253,10 @@ void setup()
   tft.setRotation(0);
   screenHeader("SMART GARDEN");
 
-  connectWiFi();
+  const bool wifiConnected = connectWiFi();
 
   client.setServer(MQTT_SERVER, MQTT_PORT);
-  connectMQTT();
+  const bool mqttConnected = wifiConnected && connectMQTT();
 
   String line = readMeasurement();
 
@@ -246,8 +264,12 @@ void setup()
     screenHeader("DATA");
     screenLine(line, 40);
 
+    bool ok = false;
     String topic = topicForPayload(line);
-    bool ok = client.publish(topic.c_str(), line.c_str(), false);
+
+    if (mqttConnected) {
+      ok = client.publish(topic.c_str(), line.c_str(), false);
+    }
 
     if (ok) {
       screenLine("MQTT SENT", 120);
@@ -257,12 +279,11 @@ void setup()
     } else {
       screenLine("MQTT FAIL", 120);
       Serial.println("MQTT FAIL");
-      diagBlink(2);  // MQTT publish failed
+      diagBlink(2);  // MQTT publish failed or connection unavailable
     }
 
-    // Send ACK to the STM32 regardless of the MQTT result.
-    // The STM32 waits for this signal before entering STOP mode and has
-    // its own 30-second ACK timeout as a fallback.
+    // Send ACK to the STM32 once the payload has been received and handled.
+    // MQTT delivery success is reported separately by the diagnostic LED.
     Serial2.println("OK");
     Serial2.flush();
     delay(50);
@@ -271,13 +292,15 @@ void setup()
     Serial.println("No valid STM32 JSON received before timeout");
     diagBlink(3);  // No UART measurement received from STM32
     // Do not send ACK here. The STM32 either did not wake or will return to
-    // STOP mode on its own after the 30-second timeout.
+    // STOP mode on its own after the ACK timeout.
   }
 
-  unsigned long flushUntil = millis() + MQTT_FLUSH_MS;
-  while (millis() < flushUntil) {
-    client.loop();
-    delay(10);
+  if (mqttConnected) {
+    unsigned long flushUntil = millis() + MQTT_FLUSH_MS;
+    while (millis() < flushUntil) {
+      client.loop();
+      delay(10);
+    }
   }
 
   goToSleep();
