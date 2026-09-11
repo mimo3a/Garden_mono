@@ -2,7 +2,7 @@
 /**
   ******************************************************************************
   * @file           : main.c
-  * @brief          : Main program body (FIXED)
+  * @brief          : Main program body
   ******************************************************************************
   */
 /* USER CODE END Header */
@@ -27,6 +27,8 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define STARTUP_DEBUG_WINDOW_MS 5000
+#define SOIL_DRY_RAW            17300U
+#define SOIL_WET_RAW             7100U
 
 /* USER CODE END PD */
 
@@ -64,8 +66,7 @@ uint8_t rx_index = 0;
  */
 static uint32_t last_battery_mV = 4200;
 
-/* Voltage thresholds for a single 18650 Li-Ion cell. */
-#define BATTERY_LOW_MV        3400U   /* Set low-battery flag in JSON below this level */
+/* Voltage thresholds and ADC scaling for a single 18650 Li-Ion cell. */
 #define BATTERY_CRITICAL_MV   3100U   /* Enter STANDBY after warning blink below this level */
 #define BATTERY_VREF_MV       3300U   /* STM32 VDD/VREF+ after LDO */
 #define BATTERY_ADC_MAX       4095U   /* 12-bit ADC */
@@ -85,7 +86,7 @@ uint8_t Moisture_ToPercent(uint32_t raw, uint32_t dry, uint32_t wet);
 static void EnterStopMode(void);
 static uint8_t Debugger_IsAttached(void);
 static void LED_Blink(uint8_t count);
-HAL_StatusTypeDef MeasureAndDisplay(void);
+HAL_StatusTypeDef MeasureAndTransmit(void);
 static uint32_t ReadBatteryMillivolts(void);
 static void CriticalBatteryShutdown(void);
 
@@ -124,7 +125,7 @@ static void LED_Blink(uint8_t count)
 }
 
 
-HAL_StatusTypeDef MeasureAndDisplay(void) {
+HAL_StatusTypeDef MeasureAndTransmit(void) {
 
     int16_t temp_integer = 0;
     int16_t temp_fraction = 0;
@@ -140,10 +141,10 @@ HAL_StatusTypeDef MeasureAndDisplay(void) {
     raw3 = MoistureSensor_Read(ADS1115_CHANNEL_2);
     raw4 = MoistureSensor_Read(ADS1115_CHANNEL_3);
 
-    soil1 = Moisture_ToPercent(raw1, 17300, 7100);
-    soil2 = Moisture_ToPercent(raw2, 17300, 7100);
-    soil3 = Moisture_ToPercent(raw3, 17300, 7100);
-    soil4 = Moisture_ToPercent(raw4, 17300, 7100);
+    soil1 = Moisture_ToPercent(raw1, SOIL_DRY_RAW, SOIL_WET_RAW);
+    soil2 = Moisture_ToPercent(raw2, SOIL_DRY_RAW, SOIL_WET_RAW);
+    soil3 = Moisture_ToPercent(raw3, SOIL_DRY_RAW, SOIL_WET_RAW);
+    soil4 = Moisture_ToPercent(raw4, SOIL_DRY_RAW, SOIL_WET_RAW);
 
     last_battery_mV = ReadBatteryMillivolts();
 
@@ -376,7 +377,7 @@ int main(void)
         measure_flag = 0;
         ack_received = 0;
         LED_Blink(1);                                 /* Wake-up indication */
-        HAL_StatusTypeDef tx = MeasureAndDisplay();
+        HAL_StatusTypeDef tx = MeasureAndTransmit();
         LED_Blink(tx == HAL_OK ? 1 : 2);              /* 1 = sent, 2 = UART error */
 
         /* Critical battery protection.
