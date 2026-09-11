@@ -294,4 +294,4 @@ GitHub Actions builds the software components automatically.
 
 ## Further Reading
 
-Detailed development notes, design decisions and roadmap are available in [`CLAUDE.md`](CLAUDE.md).
+Development workflow, architecture notes, engineering constraints, and the release checklist are documented in [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
