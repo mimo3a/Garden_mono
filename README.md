@@ -21,12 +21,15 @@ The current stable hardware implementation uses an **STM32F103 (Blue Pill)**. Th
 
 ## Hardware Prototype
 
-Real-hardware photos and a short demo video will be added here.
+The working V1 prototype uses four capacitive soil-moisture sensors, temperature sensing, battery monitoring, an STM32F103 sensor controller, an ESP32 Wi-Fi/MQTT gateway, and a local TFT status display.
 
-<!--
 ![Smart Garden prototype](docs/images/smart-garden-overview.jpg)
-![Electronics](docs/images/electronics.jpg)
--->
+
+### Internal Electronics
+
+The enclosure contains the STM32F103 Blue Pill, ESP32, ADS1115 ADC, battery/power circuitry, terminal connections, and the display used for local diagnostics.
+
+![Smart Garden electronics](docs/images/electronics.jpg)
 
 ## System Architecture
 
@@ -191,6 +194,18 @@ STM32 diagnostic LED:
 
 The backend subscribes to MQTT messages and persists measurements in PostgreSQL. The frontend provides live status, history charts, administration and CSV export.
 
+### Web Dashboard
+
+The React dashboard visualizes the latest measurements received from each Smart Garden device, including temperature, four soil-moisture channels, and battery voltage.
+
+![Smart Garden dashboard](docs/images/dashboard.jpg)
+
+### Measurement History
+
+Measurements received through MQTT are processed by the Spring Boot backend, stored in PostgreSQL, and exposed to the frontend through the REST API.
+
+![Smart Garden measurements](docs/images/measurements.jpg)
+
 ### REST API
 
 | Method | Path | Description |
@@ -287,7 +302,6 @@ GitHub Actions builds the software components automatically.
 
 - complete STM32L476 + FreeRTOS migration on `develop`
 - move runtime configuration out of firmware constants
-- add real-hardware photos and wiring overview
 - add a short demonstration video
 - document measured current consumption in active and sleep states
 - add automated host-side tests for payload parsing and protocol edge cases
