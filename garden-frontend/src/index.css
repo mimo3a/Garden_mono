@@ -1,3 +1,30 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* The app began dark-first. These overrides reuse its existing utility classes for a coherent light theme. */
+.theme-light {
+  color-scheme: light;
+}
+
+.theme-light .bg-gray-950 { background-color: #f8fafc; }
+.theme-light .bg-gray-900 { background-color: #ffffff; }
+.theme-light .bg-gray-800 { background-color: #ffffff; }
+.theme-light .bg-gray-700 { background-color: #e5e7eb; }
+.theme-light .bg-gray-600 { background-color: #d1d5db; }
+.theme-light .bg-gray-900\/80 { background-color: rgba(255, 255, 255, .9); }
+.theme-light .border-gray-700 { border-color: #d1d5db; }
+.theme-light .border-red-900\/80 { border-color: #fca5a5; }
+.theme-light .border-yellow-900\/70 { border-color: #fcd34d; }
+.theme-light .text-white { color: #111827; }
+.theme-light .text-gray-300 { color: #374151; }
+.theme-light .text-gray-400 { color: #4b5563; }
+.theme-light .text-gray-500 { color: #6b7280; }
+.theme-light .text-gray-600 { color: #6b7280; }
+.theme-light .text-green-400 { color: #15803d; }
+.theme-light .text-yellow-400 { color: #a16207; }
+.theme-light .text-red-400 { color: #b91c1c; }
+.theme-light .text-blue-400 { color: #1d4ed8; }
+.theme-light .hover\:bg-gray-600:hover { background-color: #d1d5db; }
+.theme-light .hover\:bg-gray-700:hover { background-color: #e5e7eb; }
+.theme-light .hover\:text-white:hover { color: #111827; }

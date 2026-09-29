@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import Navbar from './components/Navbar'
 import Dashboard from './pages/Dashboard'
@@ -7,9 +8,15 @@ import Measurements from './pages/Measurements'
 import Admin from './pages/Admin'
 
 export default function App() {
+  const [theme, setTheme] = useState(() => localStorage.getItem('garden-theme') || 'dark')
+
+  useEffect(() => {
+    localStorage.setItem('garden-theme', theme)
+  }, [theme])
+
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      <Navbar />
+    <div className={`min-h-screen bg-gray-950 text-white theme-${theme}`}>
+      <Navbar theme={theme} onThemeChange={() => setTheme(current => current === 'dark' ? 'light' : 'dark')} />
       <main>
         <Routes>
           <Route path="/"                    element={<Dashboard />} />
