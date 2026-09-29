@@ -52,7 +52,7 @@ jobs:
           host: ${{ secrets.HETZNER_HOST }}
           username: ${{ secrets.HETZNER_USER }}
           key: ${{ secrets.HETZNER_SSH_KEY }}
-          envs: GHCR_TOKEN
+          envs: GHCR_TOKEN,APP_BOOTSTRAP_ADMIN_EMAIL,APP_BOOTSTRAP_ADMIN_PASSWORD
           script: |
             cd /srv/projects/garden/backend
             echo "$GHCR_TOKEN" | docker login ghcr.io -u mimo3a --password-stdin
@@ -61,3 +61,5 @@ jobs:
             docker image prune -f
         env:
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          APP_BOOTSTRAP_ADMIN_EMAIL: ${{ secrets.APP_BOOTSTRAP_ADMIN_EMAIL }}
+          APP_BOOTSTRAP_ADMIN_PASSWORD: ${{ secrets.APP_BOOTSTRAP_ADMIN_PASSWORD }}
