@@ -15,7 +15,7 @@ export default function App() {
   }, [theme])
 
   return (
-    <div className={`min-h-screen bg-gray-950 text-white theme-${theme}`}>
+    <div className={`garden-app min-h-screen bg-gray-950 text-white theme-${theme}`}>
       <Navbar theme={theme} onThemeChange={() => setTheme(current => current === 'dark' ? 'light' : 'dark')} />
       <main>
         <Routes>
