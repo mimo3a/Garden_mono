@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { getStatus, STATUS_COLOR, STATUS_BG } from '../constants/thresholds'
+import { ageLabel, isOnline, latestTimestamp, measurementWarnings } from '../utils/sensorData'
 
 function SoilBar({ label, value }) {
   const status = getStatus('soil', value)
@@ -19,7 +20,7 @@ function SoilBar({ label, value }) {
   )
 }
 
-export default function SensorCard({ sensor, latest }) {
+export default function SensorCard({ sensor, latest, now }) {
   const temp = latest?.find(m => m.type === 'temperature')
   const bat  = latest?.find(m => m.type === 'battery')
   const soils = ['soil1', 'soil2', 'soil3', 'soil4']
@@ -28,11 +29,14 @@ export default function SensorCard({ sensor, latest }) {
 
   const tempStatus = temp ? getStatus('temperature', temp.value) : 'ok'
   const batStatus  = bat  ? getStatus('battery', bat.value)      : null
+  const lastSeen = latestTimestamp(latest)
+  const online = isOnline(lastSeen, now)
+  const warnings = measurementWarnings(Object.fromEntries((latest || []).map(m => [m.type, m])))
 
   return (
     <Link
       to={`/sensors/${sensor.deviceId}`}
-      className="block bg-gray-800 border border-gray-700 rounded-xl p-4 hover:border-green-500 transition-colors"
+      className={`block bg-gray-800 border rounded-xl p-4 hover:border-green-500 transition-colors ${online ? 'border-gray-700' : 'border-red-900/80'}`}
     >
       <div className="flex justify-between items-start mb-3">
         <div>
@@ -40,7 +44,10 @@ export default function SensorCard({ sensor, latest }) {
           <p className="text-xs text-gray-500">{sensor.location || 'No location'}</p>
         </div>
         <div className="flex flex-col items-end gap-1">
-          <span className="text-xs text-gray-600">#{sensor.deviceId}</span>
+          <span className={`inline-flex items-center gap-1 text-xs font-medium ${online ? 'text-green-400' : 'text-red-400'}`}>
+            <span className={`h-2 w-2 rounded-full ${online ? 'bg-green-400' : 'bg-red-400'}`} />
+            {online ? 'Online' : 'Offline'}
+          </span>
           {bat && (
             <span className={`text-xs font-medium ${STATUS_COLOR[batStatus]}`}>
               {(bat.value / 1000).toFixed(2)}V
@@ -51,6 +58,11 @@ export default function SensorCard({ sensor, latest }) {
 
       <div className={`text-3xl font-bold mb-3 ${STATUS_COLOR[tempStatus]}`}>
         {temp ? `${temp.value.toFixed(1)}°C` : '—'}
+      </div>
+
+      <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
+        <span>{ageLabel(lastSeen, now)}</span>
+        <span>{warnings.length ? `${warnings.length} warning${warnings.length > 1 ? 's' : ''}` : 'All readings normal'}</span>
       </div>
 
       {soils.map(s => (
