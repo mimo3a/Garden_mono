@@ -9,8 +9,8 @@ const links = [
 
 export default function Navbar({ theme, onThemeChange }) {
   return (
-    <nav className="bg-gray-900 border-b border-gray-700 px-6 py-3 flex items-center gap-4 sm:gap-6">
-      <span className="text-green-400 font-bold text-lg mr-4">Smart Garden</span>
+    <nav className="garden-nav bg-gray-900 border-b border-gray-700 px-4 sm:px-6 py-3 flex items-center gap-4 sm:gap-6">
+      <span className="garden-brand text-green-400 font-bold text-lg mr-1 sm:mr-4"><span aria-hidden="true">✦</span> Smart Garden</span>
       <div className="flex items-center gap-4 sm:gap-6 flex-1 overflow-x-auto">
       {links.map(l => (
         <NavLink
