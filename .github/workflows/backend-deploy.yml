@@ -57,7 +57,10 @@ jobs:
             cd /srv/projects/garden/backend
             echo "$GHCR_TOKEN" | docker login ghcr.io -u mimo3a --password-stdin
             docker compose pull backend
-            docker compose up -d --no-deps backend
+            # `latest` is a mutable tag. Force recreation so a successfully
+            # pulled image is always the process that serves the API.
+            docker compose up -d --no-deps --force-recreate backend
+            docker compose ps backend
             docker image prune -f
         env:
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
