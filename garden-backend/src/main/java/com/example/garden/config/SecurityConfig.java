@@ -57,7 +57,9 @@ public class SecurityConfig {
                 .csrf(config -> config
                         .csrfTokenRepository(csrf)
                         .csrfTokenRequestHandler(new SpaCsrfTokenRequestHandler())
-                        .ignoringRequestMatchers("/api/auth/csrf"))
+                        // These endpoints are used before a user has an authenticated session.
+                        // Session-changing API operations remain protected by CSRF tokens.
+                        .ignoringRequestMatchers("/api/auth/csrf", "/api/auth/login", "/api/auth/accept-invitation"))
                 .sessionManagement(config -> config.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.GET, "/api/auth/csrf").permitAll()
