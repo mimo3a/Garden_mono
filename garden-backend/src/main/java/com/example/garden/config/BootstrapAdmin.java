@@ -14,11 +14,25 @@ public class BootstrapAdmin {
     @Bean
     CommandLineRunner createInitialAdmin(AppUserRepository users, PasswordEncoder encoder,
                                          @Value("${app.bootstrap-admin.email:}") String email,
-                                         @Value("${app.bootstrap-admin.password:}") String password) {
+                                         @Value("${app.bootstrap-admin.password:}") String password,
+                                         @Value("${app.bootstrap-admin.reset-password:false}") boolean resetPassword) {
         return args -> {
-            if (users.existsByRole(Role.ADMIN) || email.isBlank() || password.isBlank()) return;
+            if (email.isBlank() || password.isBlank()) return;
+            String normalizedEmail = email.trim().toLowerCase();
+            var matchingUser = users.findByEmailIgnoreCase(normalizedEmail);
+
+            if (resetPassword) {
+                AppUser admin = matchingUser.orElseThrow(() -> new IllegalStateException(
+                        "Cannot reset the administrator password: no account matches the configured email"));
+                admin.setPasswordHash(encoder.encode(password));
+                admin.setRole(Role.ADMIN);
+                users.save(admin);
+                return;
+            }
+
+            if (users.existsByRole(Role.ADMIN)) return;
             AppUser admin = new AppUser();
-            admin.setEmail(email.trim().toLowerCase());
+            admin.setEmail(normalizedEmail);
             admin.setPasswordHash(encoder.encode(password));
             admin.setRole(Role.ADMIN);
             users.save(admin);
