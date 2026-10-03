@@ -11,6 +11,10 @@ Before deploying the security branch, add two GitHub Actions secrets in **Settin
 
 The backend creates this administrator only when no administrator exists. It never logs the password and it is not stored in the repository. Keep the secrets in place for later deploys; they do not reset an existing administrator.
 
+## Resetting the administrator password
+
+If the initial password is lost, change `APP_BOOTSTRAP_ADMIN_PASSWORD` to a new, unique password and temporarily create the Actions secret `APP_BOOTSTRAP_ADMIN_RESET_PASSWORD` with the value `true`. Run **Backend Deploy** manually from the GitHub Actions page. It resets only the account matching `APP_BOOTSTRAP_ADMIN_EMAIL`; it will fail rather than change a different account. After a successful sign-in, delete the temporary reset secret and run **Backend Deploy** once more.
+
 ## Inviting users
 
 1. Sign in as the administrator.
