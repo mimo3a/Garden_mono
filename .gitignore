@@ -17,6 +17,7 @@ garden-frontend/.env
 # ESP32 / PlatformIO
 ESP/.pio/
 ESP/.vscode/
+ESP/include/secrets.h
 
 # STM32
 STM/build/
