@@ -3,14 +3,15 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <esp_sleep.h>
+#include "secrets.h"
 
-const char* WIFI_SSID = "REDACTED_WIFI_SSID";
-const char* WIFI_PASS = "REDACTED_WIFI_PASSWORD";
+const char* WIFI_SSID = SECRET_WIFI_SSID;
+const char* WIFI_PASS = SECRET_WIFI_PASS;
 
-const char* MQTT_SERVER = "REDACTED_MQTT_HOST";
+const char* MQTT_SERVER = SECRET_MQTT_SERVER;
 const int   MQTT_PORT   = 1883;
 const char* MQTT_USER   = "esp32";
-const char* MQTT_PASS   = "REDACTED_MQTT_PASSWORD";
+const char* MQTT_PASS   = SECRET_MQTT_PASS;
 
 const int DEVICE_ID = 2;
 
@@ -30,6 +31,9 @@ TFT_eSPI tft = TFT_eSPI();
 const uint64_t SLEEP_INTERVAL_US = 60ULL * 60ULL * 1000000ULL;
 const unsigned long MEASURE_TIMEOUT_MS = 60000;
 const unsigned long MQTT_FLUSH_MS = 500;
+const unsigned long WIFI_CONNECT_TIMEOUT_MS = 20000;
+const unsigned long MQTT_CONNECT_TIMEOUT_MS = 15000;
+const unsigned long MQTT_RETRY_DELAY_MS = 2000;
 
 // -------------------- DIAG LED --------------------
 
@@ -68,19 +72,26 @@ void screenLine(const String& text, int y)
 
 // -------------------- WIFI --------------------
 
-void connectWiFi()
+bool connectWiFi()
 {
   IPAddress local_IP(192, 168, 178, 100);
   IPAddress gateway(192, 168, 178, 1);
   IPAddress subnet(255, 255, 255, 0);
   IPAddress dns(192, 168, 178, 1);
-  WiFi.config(local_IP, gateway, dns, subnet);
+  WiFi.config(local_IP, gateway, subnet, dns);
 
   WiFi.begin(WIFI_SSID, WIFI_PASS);
+  unsigned long startedAt = millis();
 
-  while (WiFi.status() != WL_CONNECTED) {
+  while (WiFi.status() != WL_CONNECTED && millis() - startedAt < WIFI_CONNECT_TIMEOUT_MS) {
     delay(500);
     Serial.print(".");
+  }
+
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("\nWiFi connection timed out");
+    screenLine("WiFi timeout", 40);
+    return false;
   }
 
   Serial.println();
@@ -88,13 +99,15 @@ void connectWiFi()
   Serial.println(WiFi.localIP());
 
   screenLine("WiFi OK", 40);
+  return true;
 }
 
 // -------------------- MQTT --------------------
 
-void connectMQTT()
+bool connectMQTT()
 {
-  while (!client.connected()) {
+  unsigned long startedAt = millis();
+  while (!client.connected() && millis() - startedAt < MQTT_CONNECT_TIMEOUT_MS) {
 
     String clientId = "esp32-" + String(DEVICE_ID);
 
@@ -104,9 +117,17 @@ void connectMQTT()
       screenLine("MQTT OK", 70);
     } else {
       Serial.println("MQTT connection failed");
-      delay(2000);
+      delay(MQTT_RETRY_DELAY_MS);
     }
   }
+
+  if (!client.connected()) {
+    Serial.println("MQTT connection timed out");
+    screenLine("MQTT timeout", 70);
+    return false;
+  }
+
+  return true;
 }
 
 String readMeasurement()
@@ -235,10 +256,11 @@ void setup()
   tft.setRotation(0);
   screenHeader("SMART GARDEN");
 
-  connectWiFi();
-
-  client.setServer(MQTT_SERVER, MQTT_PORT);
-  connectMQTT();
+  if (!connectWiFi()) {
+    diagBlink(2);
+    goToSleep();
+    return;
+  }
 
   String line = readMeasurement();
 
@@ -246,18 +268,27 @@ void setup()
     screenHeader("DATA");
     screenLine(line, 40);
 
-    String topic = topicForPayload(line);
-    bool ok = client.publish(topic.c_str(), line.c_str(), false);
+    // Do not keep an MQTT connection alive while waiting up to one minute for
+    // the STM32. PubSubClient otherwise misses its keepalive window.
+    client.setServer(MQTT_SERVER, MQTT_PORT);
+    bool ok = false;
+    if (connectMQTT()) {
+      String topic = topicForPayload(line);
+      ok = client.publish(topic.c_str(), line.c_str(), false);
 
-    if (ok) {
-      screenLine("MQTT SENT", 120);
-      Serial.print("MQTT SENT: ");
-      Serial.println(topic);
-      diagBlink(1);  // Published successfully
+      if (ok) {
+        screenLine("MQTT SENT", 120);
+        Serial.print("MQTT SENT: ");
+        Serial.println(topic);
+        diagBlink(1);  // Published successfully
+      } else {
+        screenLine("MQTT FAIL", 120);
+        Serial.println("MQTT FAIL");
+        diagBlink(2);  // MQTT publish failed
+      }
     } else {
       screenLine("MQTT FAIL", 120);
-      Serial.println("MQTT FAIL");
-      diagBlink(2);  // MQTT publish failed
+      diagBlink(2);
     }
 
     // Send ACK to the STM32 regardless of the MQTT result.
