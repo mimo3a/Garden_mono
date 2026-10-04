@@ -1,6 +1,7 @@
 package com.example.garden.config;
 
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.integration.config.EnableIntegration;
@@ -18,20 +19,21 @@ import com.example.garden.service.MqttMessageHandler;
 @EnableIntegration
 public class MqttConfig {
 
-    @Bean
-    public MqttPahoClientFactory mqttClientFactory() {
-        DefaultMqttPahoClientFactory factory = new DefaultMqttPahoClientFactory();
-
-        MqttConnectOptions options = new MqttConnectOptions();
-        options.setServerURIs(new String[]{"tcp://mqtt:1883"});
-        options.setUserName("esp32");
-        options.setPassword("REDACTED_MQTT_PASSWORD".toCharArray());
-        options.setAutomaticReconnect(true);
-        options.setCleanSession(false);
-
-        factory.setConnectionOptions(options);
-        return factory;
-    }
+   @Bean
+public MqttPahoClientFactory mqttClientFactory(
+        @Value("${mqtt.broker:tcp://mqtt:1883}") String broker,
+        @Value("${mqtt.username}") String username,
+        @Value("${mqtt.password}") String password) {
+    DefaultMqttPahoClientFactory factory = new DefaultMqttPahoClientFactory();
+    MqttConnectOptions options = new MqttConnectOptions();
+    options.setServerURIs(new String[]{broker});
+    options.setUserName(username);
+    options.setPassword(password.toCharArray());
+    options.setAutomaticReconnect(true);
+    options.setCleanSession(false);
+    factory.setConnectionOptions(options);
+    return factory;
+}
 
     @Bean
     public MessageChannel mqttInputChannel() {
