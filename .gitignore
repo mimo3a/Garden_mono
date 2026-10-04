@@ -37,3 +37,6 @@ STM/*.hex
 **/Debug/
 **/Release/
 .metadata/
+
+Claude outputs/
+STM/F108First/
