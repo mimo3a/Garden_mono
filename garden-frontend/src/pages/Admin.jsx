@@ -1,13 +1,21 @@
 import { useEffect, useState } from 'react'
 import { getSensors, updateSensor, deleteSensor } from '../api/sensors'
+import { createInvitation } from '../api/auth'
+import { useAuth } from '../auth/AuthContext'
 import LoadingSpinner from '../components/LoadingSpinner'
 
 export default function Admin() {
+  const { user } = useAuth()
   const [sensors, setSensors] = useState([])
   const [edits, setEdits] = useState({})
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState({})
   const [confirm, setConfirm] = useState(null)
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteDeviceIds, setInviteDeviceIds] = useState([])
+  const [inviteLink, setInviteLink] = useState('')
+  const [inviteError, setInviteError] = useState('')
+  const [inviting, setInviting] = useState(false)
 
   useEffect(() => {
     getSensors().then(data => {
@@ -41,6 +49,22 @@ export default function Admin() {
     setConfirm(null)
   }
 
+  async function handleInvite(event) {
+    event.preventDefault()
+    setInviteError(''); setInviteLink(''); setInviting(true)
+    try {
+      const invitation = await createInvitation(inviteEmail, inviteDeviceIds)
+      setInviteLink(`${window.location.origin}/accept-invitation?token=${invitation.token}`)
+      setInviteEmail(''); setInviteDeviceIds([])
+    } catch (error) {
+      setInviteError(error.response?.data?.message || 'Unable to create invitation.')
+    } finally { setInviting(false) }
+  }
+
+  function toggleInviteSensor(deviceId) {
+    setInviteDeviceIds(current => current.includes(deviceId) ? current.filter(id => id !== deviceId) : [...current, deviceId])
+  }
+
   if (loading) return <LoadingSpinner />
 
   return (
@@ -49,6 +73,15 @@ export default function Admin() {
         <h1 className="text-2xl font-bold text-white">Admin</h1>
         <span className="text-gray-400 text-sm">{sensors.length} sensors registered</span>
       </div>
+
+      {user.role === 'ADMIN' && <form onSubmit={handleInvite} className="bg-gray-800 border border-gray-700 rounded-xl p-4 space-y-3">
+        <div><h2 className="text-white font-semibold">Invite a user</h2><p className="text-sm text-gray-400">Choose the sensors they may access. The link expires after 7 days and can be used once.</p></div>
+        <input type="email" required placeholder="person@example.com" value={inviteEmail} onChange={event => setInviteEmail(event.target.value)} className="bg-gray-700 border border-gray-600 text-white rounded px-3 py-2 w-full sm:max-w-md text-sm" />
+        <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-gray-300">{sensors.map(sensor => <label key={sensor.deviceId} className="inline-flex items-center gap-2"><input type="checkbox" checked={inviteDeviceIds.includes(sensor.deviceId)} onChange={() => toggleInviteSensor(sensor.deviceId)} />#{sensor.deviceId} · {sensor.name || `Device ${sensor.deviceId}`}</label>)}</div>
+        {inviteError && <p className="text-sm text-red-400">{inviteError}</p>}
+        {inviteLink && <div className="text-sm"><p className="text-green-400 mb-1">Invitation created. Send this private link:</p><input readOnly value={inviteLink} className="bg-gray-900 border border-gray-600 text-gray-300 rounded px-3 py-2 w-full" onFocus={event => event.target.select()} /></div>}
+        <button disabled={inviting || inviteDeviceIds.length === 0} className="px-4 py-2 bg-green-700 hover:bg-green-600 disabled:opacity-50 text-white rounded text-sm">{inviting ? 'Creating…' : 'Create invitation'}</button>
+      </form>}
 
       <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
         <table className="w-full text-sm">

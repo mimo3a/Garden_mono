@@ -1,6 +1,7 @@
 name: Backend Deploy
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
@@ -52,12 +53,19 @@ jobs:
           host: ${{ secrets.HETZNER_HOST }}
           username: ${{ secrets.HETZNER_USER }}
           key: ${{ secrets.HETZNER_SSH_KEY }}
-          envs: GHCR_TOKEN
+          envs: GHCR_TOKEN,APP_BOOTSTRAP_ADMIN_EMAIL,APP_BOOTSTRAP_ADMIN_PASSWORD,APP_BOOTSTRAP_ADMIN_RESET_PASSWORD,MQTT_PASSWORD
           script: |
             cd /srv/projects/garden/backend
             echo "$GHCR_TOKEN" | docker login ghcr.io -u mimo3a --password-stdin
             docker compose pull backend
-            docker compose up -d --no-deps backend
+            # `latest` is a mutable tag. Force recreation so a successfully
+            # pulled image is always the process that serves the API.
+            docker compose up -d --no-deps --force-recreate backend
+            docker compose ps backend
             docker image prune -f
         env:
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          APP_BOOTSTRAP_ADMIN_EMAIL: ${{ secrets.APP_BOOTSTRAP_ADMIN_EMAIL }}
+          APP_BOOTSTRAP_ADMIN_PASSWORD: ${{ secrets.APP_BOOTSTRAP_ADMIN_PASSWORD }}
+          APP_BOOTSTRAP_ADMIN_RESET_PASSWORD: ${{ secrets.APP_BOOTSTRAP_ADMIN_RESET_PASSWORD }}
+          MQTT_PASSWORD: ${{ secrets.MQTT_PASSWORD }}

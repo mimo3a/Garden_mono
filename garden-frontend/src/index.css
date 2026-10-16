@@ -1,3 +1,126 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Garden V2: a brighter, friendlier visual layer over the existing components. */
+.garden-app {
+  min-height: 100vh;
+  position: relative;
+  isolation: isolate;
+  background:
+    radial-gradient(circle at 10% -5%, rgba(45, 212, 191, .17), transparent 28rem),
+    radial-gradient(circle at 92% 9%, rgba(167, 139, 250, .16), transparent 25rem),
+    #030712;
+}
+
+.garden-app::before,
+.garden-app::after {
+  content: '';
+  position: fixed;
+  z-index: -1;
+  width: 18rem;
+  height: 18rem;
+  border-radius: 999px;
+  filter: blur(70px);
+  pointer-events: none;
+  opacity: .25;
+}
+
+.garden-app::before { background: #14b8a6; left: -10rem; bottom: 4rem; }
+.garden-app::after { background: #8b5cf6; right: -10rem; top: 12rem; }
+
+.garden-app main { max-width: 1600px; margin: 0 auto; }
+
+.garden-nav {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: rgba(17, 24, 39, .78);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .06), 0 12px 30px rgba(0, 0, 0, .12);
+}
+
+.garden-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  letter-spacing: -.025em;
+  white-space: nowrap;
+}
+
+.garden-brand span {
+  display: inline-grid;
+  place-items: center;
+  width: 1.7rem;
+  height: 1.7rem;
+  color: #052e2b;
+  background: linear-gradient(135deg, #5eead4, #a7f3d0);
+  border-radius: .65rem;
+  box-shadow: 0 5px 14px rgba(45, 212, 191, .26);
+}
+
+.garden-nav a {
+  padding: .42rem .7rem;
+  border-radius: .6rem;
+  white-space: nowrap;
+}
+
+.garden-nav a.text-green-400 {
+  color: #d1fae5;
+  background: rgba(16, 185, 129, .15);
+}
+
+.garden-app .bg-gray-800 {
+  background: linear-gradient(145deg, rgba(31, 41, 55, .94), rgba(17, 24, 39, .9));
+  box-shadow: 0 10px 25px rgba(0, 0, 0, .12);
+}
+
+.garden-app a.bg-gray-800:hover,
+.garden-app .bg-gray-800.hover\:border-green-500:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 32px rgba(0, 0, 0, .2), 0 0 0 1px rgba(94, 234, 212, .2);
+}
+
+.garden-app .rounded-xl { border-radius: 1rem; }
+.garden-app button { transition: transform 160ms ease, box-shadow 160ms ease, background-color 160ms ease; }
+.garden-app button:not(:disabled):active { transform: translateY(1px) scale(.98); }
+.garden-app .bg-green-500 { background-color: #2dd4bf; }
+.garden-app .text-gray-950 { color: #042f2e; }
+
+@media (max-width: 640px) {
+  .garden-app .p-6 { padding: 1.25rem; }
+  .garden-nav { gap: .6rem; }
+}
+
+/* The app began dark-first. These overrides reuse its existing utility classes for a coherent light theme. */
+.theme-light {
+  color-scheme: light;
+  background:
+    radial-gradient(circle at 10% -5%, rgba(45, 212, 191, .24), transparent 28rem),
+    radial-gradient(circle at 92% 9%, rgba(167, 139, 250, .2), transparent 25rem),
+    #f7fafc;
+}
+
+.theme-light .bg-gray-950 { background-color: #f8fafc; }
+.theme-light .bg-gray-900 { background-color: rgba(255, 255, 255, .78); }
+.theme-light .bg-gray-800 { background: linear-gradient(145deg, rgba(255, 255, 255, .92), rgba(248, 250, 252, .88)); box-shadow: 0 10px 25px rgba(15, 23, 42, .07); }
+.theme-light .bg-gray-700 { background-color: #e5e7eb; }
+.theme-light .bg-gray-600 { background-color: #d1d5db; }
+.theme-light .bg-gray-900\/80 { background-color: rgba(255, 255, 255, .9); }
+.theme-light .border-gray-700 { border-color: #d1d5db; }
+.theme-light .border-red-900\/80 { border-color: #fca5a5; }
+.theme-light .border-yellow-900\/70 { border-color: #fcd34d; }
+.theme-light .text-white { color: #111827; }
+.theme-light .text-gray-300 { color: #374151; }
+.theme-light .text-gray-400 { color: #4b5563; }
+.theme-light .text-gray-500 { color: #6b7280; }
+.theme-light .text-gray-600 { color: #6b7280; }
+.theme-light .text-green-400 { color: #15803d; }
+.theme-light .text-yellow-400 { color: #a16207; }
+.theme-light .text-red-400 { color: #b91c1c; }
+.theme-light .text-blue-400 { color: #1d4ed8; }
+.theme-light .hover\:bg-gray-600:hover { background-color: #d1d5db; }
+.theme-light .hover\:bg-gray-700:hover { background-color: #e5e7eb; }
+.theme-light .hover\:text-white:hover { color: #111827; }
+.theme-light .garden-nav { background: rgba(255, 255, 255, .72); box-shadow: 0 1px 0 rgba(15, 23, 42, .08), 0 12px 30px rgba(15, 23, 42, .06); }
+.theme-light .garden-nav a.text-green-400 { color: #065f46; background: rgba(45, 212, 191, .2); }
