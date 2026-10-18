@@ -55,7 +55,9 @@ const osThreadAttr_t defaultTask_attributes = {
   .priority = (osPriority_t) osPriorityNormal,
 };
 /* USER CODE BEGIN PV */
-ADS1115_t ads;
+
+ADS1115_t ads[2];
+uint8_t   ads_ok[2];
 osMutexId_t i2c1MutexHandle;
 /* USER CODE END PV */
 
@@ -107,8 +109,12 @@ int main(void)
   MX_USART1_UART_Init();
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
-  ADS1115_Init(&ads, &hi2c1, ADS1115_ADDR_GND,
-               ADS1115_PGA_4_096V, ADS1115_DR_128SPS);
+  ads_ok[0] = (ADS1115_Init(&ads[0], &hi2c1, ADS1115_ADDR_GND,
+               ADS1115_PGA_4_096V, ADS1115_DR_128SPS) == HAL_OK)
+               && (ADS1115_IsReady(&ads[0]) == HAL_OK);
+  ads_ok[1] = (ADS1115_Init(&ads[1], &hi2c1, ADS1115_ADDR_VDD,
+               ADS1115_PGA_4_096V, ADS1115_DR_128SPS) == HAL_OK)
+               && (ADS1115_IsReady(&ads[1]) == HAL_OK);
   /* USER CODE END 2 */
 
   /* Init scheduler */
@@ -348,15 +354,11 @@ static void MX_GPIO_Init(void)
 void StartDefaultTask(void *argument)
 {
   /* USER CODE BEGIN 5 */
-  const uint8_t usart1_message[] = "USART1 PA9 OK\r\n";
-
   /* Infinite loop */
   for(;;)
   {
-    HAL_UART_Transmit(&huart1, (uint8_t *)usart1_message,
-                      sizeof(usart1_message) - 1, HAL_MAX_DELAY);
-    HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-    osDelay(2000);
+    HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);   // heartbeat: прошивка работает
+    osDelay(500);
   }
   /* USER CODE END 5 */
 }
