@@ -72,6 +72,8 @@ The V1 STM32F103 firmware (`STM/`) was removed from active development. It is pr
 8. ESP32 sends an ACK to the STM32.
 9. STM32 returns to STOP mode and ESP32 returns to deep sleep.
 
+In V2 the ESP32 acknowledges the STM32 right after a valid JSON line, and the backend confirms each stored measurement on `smartgarden/{deviceId}/ack`; unconfirmed measurements are queued on the ESP32 and resent. See [`docs/protocol.md`](docs/protocol.md).
+
 ## MQTT Payload
 
 Topic:
@@ -80,7 +82,7 @@ Topic:
 smartgarden/{deviceId}/data
 ```
 
-Example:
+V1 example (installed STM32F103):
 
 ```json
 {
@@ -98,6 +100,21 @@ Example:
 - `adsReady` indicates whether the ADS1115 responded on I2C.
 - `soilRaw` exposes raw ADC values for calibration and diagnostics.
 - `battery` is measured in millivolts.
+
+V2 (STM32L476, specification — not implemented yet) extends the schema to up to four sensor modules with four sensors each (16 channels), module status, an outdoor air sensor and delivery metadata:
+
+```json
+{"deviceId":3,"fw":"2.0.0","temperature":21.50,
+ "soil":[78,null,23,90, null,null,null,null, null,null,null,null, 45,51,60,38],
+ "soilRaw":[8200,-3,14100,7600, -1,-1,-1,-1, -2,-2,-2,-2, 11800,10500,9300,12700],
+ "modules":["ok","absent","error","ok"],
+ "air":{"t":12.4,"h":81,"p":1013.2},
+ "battery":3812,"status":0,"sid":2864434397,"seq":1042,"ts":1761400000}
+```
+
+- `null` in `soil` means the channel is unavailable; negative `soilRaw` values are error codes, and `modules` holds each module's status (`ok`, `absent`, `error`).
+- `sid` (random session id), `seq` (monotonic counter) and `ts` (measurement time) are added by the ESP32 and used for deduplication and correct timestamps.
+- Full field list, error codes and size limits: [`docs/protocol.md`](docs/protocol.md). Hardware: [`docs/hardware.md`](docs/hardware.md).
 
 ## Embedded Firmware Highlights
 

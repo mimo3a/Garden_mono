@@ -34,7 +34,7 @@
 
 - [ ] **OPS-1-2. MQTT: без анонимного доступа, отдельные пользователи, ACL** `[COORD]`
   - Сначала: Алекс проверяет конфиг на сервере (`docker exec garden-mqtt cat /mosquitto/config/mosquitto.conf`) и сообщает результат. Если там `allow_anonymous true` и порт открыт наружу — это срочно: любой может публиковать данные в `smartgarden/+/data`.
-  - Сделать: `allow_anonymous false`, `password_file`, `acl_file`; пользователи: `backend` (read `smartgarden/+/data`, позже write `+/cmd`), по одному на устройство `device-<id>` (write только своего топика). Обновить `mosquitto/mosquitto.conf` в репозитории, шаблон ACL, `docs/SECURITY_SETUP.md`. Смена пользователя ESP32 — через `secrets.h.example` (ESP), backend — env.
+  - Сделать: `allow_anonymous false`, `password_file`, `acl_file`; пользователи: `backend` (read `smartgarden/+/data`, write `smartgarden/+/ack` — для BE-1-4, позже write `+/cmd`), по одному на устройство `device-<id>` (write только своего `data`, read только своего `ack` — для ESP-2-4). Обновить `mosquitto/mosquitto.conf` в репозитории, шаблон ACL, `docs/SECURITY_SETUP.md`. Смена пользователя ESP32 — через `secrets.h.example` (ESP), backend — env.
   - Порядок выкатки описать так, чтобы устройства не потеряли связь: сначала добавить новых пользователей, потом перепрошить ESP, потом закрыть старого.
 
 - [ ] **OPS-1-3. MQTT через TLS** `[DECISION]`
