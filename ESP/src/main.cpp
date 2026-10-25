@@ -10,7 +10,7 @@ const char* WIFI_PASS = SECRET_WIFI_PASS;
 
 const char* MQTT_SERVER = SECRET_MQTT_SERVER;
 const int   MQTT_PORT   = 1883;
-const char* MQTT_USER   = "esp32";
+const char* MQTT_USER   = SECRET_MQTT_USER;
 const char* MQTT_PASS   = SECRET_MQTT_PASS;
 
 const int DEVICE_ID = 2;

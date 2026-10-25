@@ -1,0 +1,20 @@
+# Mosquitto ACL template for Smart Garden.
+# Server copy: ./mosquitto_acl next to docker-compose.yml, owner uid 1883 (mosquitto), mode 600.
+# A user without an entry here has no access. MQTT 3.1.1 does not report a denied
+# publish to the client: the message is dropped silently (see docs/SECURITY_SETUP.md).
+
+# Backend: reads measurements, confirms them (BE-1-4).
+user backend
+topic read smartgarden/+/data
+topic write smartgarden/+/ack
+
+# One user per device: writes only its own data, reads only its own ack (ESP-2-4).
+# The topic id must equal DEVICE_ID of the gateway (ESP-1-2).
+user device-2
+topic write smartgarden/2/data
+topic read smartgarden/2/ack
+
+# Transition only (OPS-1-2, steps 3-6): the old shared user of backend and ESP32.
+# Remove in step 7 together with the user in mosquitto_passwd.
+user esp32
+topic readwrite smartgarden/#

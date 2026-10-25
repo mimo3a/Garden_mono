@@ -22,6 +22,10 @@ ESP/include/secrets.h
 # Environment
 .env
 
+# Mosquitto credentials (server only; templates in mosquitto/)
+mosquitto_passwd
+mosquitto_acl
+
 # IDE
 .metadata/
 .vscode/

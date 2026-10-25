@@ -32,10 +32,17 @@
   - Сделать: `POSTGRES_PASSWORD` / `SPRING_DATASOURCE_PASSWORD` — из переменных окружения (`${DB_PASSWORD:?}`), шаблон в корневом `.env.example`; процедура смены пароля существующей БД для Алекса (`ALTER USER` до перезапуска); добавить secret в деплойный workflow.
   - Риск: неверная последовательность оставит backend без доступа к БД — в инструкции порядок шагов и откат.
 
-- [ ] **OPS-1-2. MQTT: без анонимного доступа, отдельные пользователи, ACL** `[COORD]`
-  - Сначала: Алекс проверяет конфиг на сервере (`docker exec garden-mqtt cat /mosquitto/config/mosquitto.conf`) и сообщает результат. Если там `allow_anonymous true` и порт открыт наружу — это срочно: любой может публиковать данные в `smartgarden/+/data`.
+- [~] **OPS-1-2. MQTT: без анонимного доступа, отдельные пользователи, ACL** `[COORD]`
+  - Сначала: Алекс проверяет конфиг на сервере и сообщает результат (шаг 0 процедуры). Если там `allow_anonymous true` и порт открыт наружу — это срочно: любой может публиковать данные в `smartgarden/+/data`.
   - Сделать: `allow_anonymous false`, `password_file`, `acl_file`; пользователи: `backend` (read `smartgarden/+/data`, write `smartgarden/+/ack` — для BE-1-4, позже write `+/cmd`), по одному на устройство `device-<id>` (write только своего `data`, read только своего `ack` — для ESP-2-4). Обновить `mosquitto/mosquitto.conf` в репозитории, шаблон ACL, `docs/SECURITY_SETUP.md`. Смена пользователя ESP32 — через `secrets.h.example` (ESP), backend — env.
   - Порядок выкатки описать так, чтобы устройства не потеряли связь: сначала добавить новых пользователей, потом перепрошить ESP, потом закрыть старого.
+  - Решение (2026-10-25): совместить с плановой сменой паролей Wi-Fi и MQTT (пароли были в истории ветки `feature/stm32l467-freertos`, которая раньше была на GitHub). Процедура — шаги 0–8 в `docs/SECURITY_SETUP.md`, раздел «MQTT users and ACL»: брокер → backend → ESP32, старый общий пользователь `esp32` удаляется последним (шаг 7). Пароли вводятся интерактивно; `mosquitto_passwd` — во временном контейнере в каталоге сервера, а не на смонтированном файле; файлы `mosquitto_passwd`/`mosquitto_acl` — владелец 1883:1883, режим 600; после их изменения — `docker compose restart mqtt`, а не HUP.
+  - Риски:
+    - отказ ACL при публикации молча отбрасывается (MQTT 3.1.1);
+    - ESP строит топик из `deviceId` в payload STM — при несовпадении с ACL пользователя устройства данные пропадают без ошибки; проверка топика в шаге 3c, устранение причины — ESP-1-2 (топик из `DEVICE_ID` шлюза);
+    - Backend Deploy копирует `docker-compose.yml` из `main` на сервер — изменения OPS-1-2 должны попасть в `main` до шага 3 (шаг 3a);
+    - перезапуск брокера или backend во время пробуждения ESP теряет одно измерение (QoS 0) — перезапуски сразу после измерения.
+  - Заметка (2026-10-25): изменения репозитория готовы в ветке `feature/OPS-1-2-mqtt-acl` (локальный коммит): `mosquitto/mosquitto.conf`, `mosquitto/acl.example`, `docker-compose.yml` (монтирование `./mosquitto_acl`, `MQTT_USERNAME` с умолчанием `esp32`), `backend-deploy.yml` (`MQTT_USERNAME`), ESP `SECRET_MQTT_USER`, `.gitignore`, `docs/SECURITY_SETUP.md`. `pio run` с `secrets.h.example` — успешно. Шаги 0–8 на сервере выполняет Алекс; в `[x]` — после шага 7 и подтверждения.
 
 - [ ] **OPS-1-3. MQTT через TLS** `[DECISION]`
   - Зависит от: OPS-1-2
