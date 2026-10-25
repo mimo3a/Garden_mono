@@ -19,13 +19,6 @@ ESP/.pio/
 ESP/.vscode/
 ESP/include/secrets.h
 
-# STM32
-STM/build/
-STM/*.o
-STM/*.elf
-STM/*.bin
-STM/*.hex
-
 # Environment
 .env
 
@@ -40,4 +33,3 @@ STM/*.hex
 .metadata/
 
 Claude outputs/
-STM/F108First/

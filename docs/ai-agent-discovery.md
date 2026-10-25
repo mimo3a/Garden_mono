@@ -7,14 +7,13 @@ Produced after reading the full repository. No code was changed.
 ## 1. Repository structure and build tools
 
 ```
-STM/                    STM32F103 stable firmware (C, STM32CubeIDE + Makefile)
-STM-L476-FreeRTOS/      STM32L476 + FreeRTOS next-gen firmware (C, STM32CubeIDE only)
+STM-L476-FreeRTOS/      STM32L476 + FreeRTOS V2 firmware (C, STM32CubeIDE only)
 ESP/                    ESP32 gateway firmware (C++, PlatformIO / Arduino)
 garden-backend/         Spring Boot 3.5, Java 21, Maven
 garden-frontend/        React 18, Vite, Tailwind CSS, npm
 mosquitto/              Eclipse Mosquitto config + password file
 docs/                   Documentation (this file, DEVELOPMENT.md, SECURITY_SETUP.md)
-.github/workflows/      CI/CD (backend-deploy, frontend-deploy, esp32-build, stm32-build)
+.github/workflows/      CI/CD (backend-deploy, frontend-deploy, esp32-build, release-firmware)
 ```
 
 ### Build commands
@@ -25,7 +24,7 @@ docs/                   Documentation (this file, DEVELOPMENT.md, SECURITY_SETUP
 | Backend tests | `cd garden-backend && ./mvnw test` |
 | Frontend dev | `cd garden-frontend && npm run dev` |
 | ESP32 | `cd ESP && pio run && pio run -t upload` |
-| STM32F103 | `cd STM && make` |
+| STM32F103 (V1) | `git checkout v1-f103 && cd STM && make` |
 | Full stack | `docker compose up -d` (requires external network `mimozalab-network`) |
 
 ### Tests
@@ -161,7 +160,7 @@ The full pump/valve path must be designed and built from scratch in Phases 1 and
 
 ### Clarifications confirmed
 
-- **V1 = STM32F103** (archived reference in `STM/`). **V2 = STM32L476 + FreeRTOS** (`STM-L476-FreeRTOS/`, `develop` branch) — this is the active platform.
+- **V1 = STM32F103** (archived on the `v1-f103` branch). **V2 = STM32L476 + FreeRTOS** (`STM-L476-FreeRTOS/`, `develop` branch) — this is the active platform.
 - **Pump/valve control is planned after sensor reading is complete on L476.** Phase 1 firmware work must wait until DS18B20, battery ADC, and a backend-compatible JSON format are working on L476.
 
 ### Open questions before Phase 1 (pump)

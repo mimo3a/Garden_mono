@@ -35,14 +35,10 @@ pio run -t upload     # flash
 pio device monitor    # serial monitor
 ```
 
-### STM32F103 firmware (stable, `main`)
-```bash
-cd STM
-make
-```
+### STM32L476 firmware (V2, `STM-L476-FreeRTOS/`, STM32CubeIDE only)
+Primary IDE is STM32CubeIDE. No Makefile build for the L476 project yet, so there is no STM32 CI build.
 
-### STM32L476 firmware (`develop`, STM32CubeIDE only)
-Primary IDE is STM32CubeIDE. No Makefile build for the L476 project yet.
+V1 firmware (STM32F103) was removed from `develop`; it is preserved on the `v1-f103` branch and in releases `v1.0.x` (`cd STM && make` there).
 
 ## Architecture
 
@@ -98,8 +94,9 @@ Any payload schema change must be coordinated across STM32 firmware, ESP32 firmw
 - Current JSON output format differs from the stable payload: `{"channels":[{"dev":0,"ch":0,"status":0,"raw":8200},…]}` — not yet compatible with the backend parser. DS18B20 is not yet integrated in this version.
 
 ## Branching model
-- `main` — working hardware baseline (STM32F103). CI deploys from here.
-- `develop` — active development; STM32L476 migration lives here.
+- `main` — working baseline. CI deploys from here.
+- `develop` — active development; V2 firmware (STM32L476) lives here.
+- `v1-f103` — frozen V1 firmware (STM32F103), maintenance fixes only.
 - `feature/*` → `develop` → `main` when verified on hardware.
 
 ## Key embedded engineering constraints

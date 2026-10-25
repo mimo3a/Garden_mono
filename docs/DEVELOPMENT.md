@@ -18,8 +18,7 @@ feature/* -> develop -> main
 ## Repository layout
 
 ```text
-STM/                  Stable STM32F103 sensor-node firmware
-STM-L476-FreeRTOS/    Next-generation STM32L476 + FreeRTOS firmware (develop branch)
+STM-L476-FreeRTOS/    V2 sensor-node firmware: STM32L476 + FreeRTOS
 ESP/                  ESP32 UART-to-Wi-Fi/MQTT gateway
 garden-backend/       Spring Boot backend and PostgreSQL persistence
 garden-frontend/      React dashboard
@@ -36,9 +35,9 @@ Sensors -> STM32 -> UART -> ESP32 -> MQTT -> Mosquitto -> Spring Boot -> Postgre
 
 The firmware/backend contract is the JSON telemetry payload. Any payload change must be coordinated across STM32, ESP32, backend parsing, and frontend presentation.
 
-## Stable STM32F103 firmware
+## V1 STM32F103 firmware (archived)
 
-The stable firmware in `STM/` is responsible for:
+The V1 firmware is no longer on `develop`. It lives in `STM/` on the `v1-f103` branch and in the `v1.0.x` releases. It is responsible for:
 
 - ADS1115 soil-moisture acquisition over I2C
 - DS18B20 temperature acquisition
@@ -51,7 +50,7 @@ The stable firmware in `STM/` is responsible for:
 
 Primary IDE: STM32CubeIDE.
 
-Headless build:
+Headless build (on the `v1-f103` branch):
 
 ```bash
 cd STM
@@ -60,9 +59,9 @@ make
 
 CubeMX-generated source should keep project code inside `USER CODE BEGIN/END` regions so regeneration does not overwrite application logic.
 
-## STM32L476 + FreeRTOS development
+## V2 STM32L476 + FreeRTOS firmware
 
-The next-generation firmware is developed in `STM-L476-FreeRTOS/` on `develop` and feature branches.
+The V2 firmware is developed in `STM-L476-FreeRTOS/` on `develop` and feature branches. It is built in STM32CubeIDE; there is no headless Makefile build yet.
 
 Current goals include:
 
@@ -73,7 +72,7 @@ Current goals include:
 - lower-power operation using STM32L4 power modes
 - separation of protocol, sensor, power-management, and diagnostics modules
 
-The L476 implementation should remain outside `main` until it is verified as the working hardware baseline.
+The L476 implementation is merged to `main` only after it is verified as the working hardware baseline (including a backend-compatible JSON payload).
 
 ## ESP32 firmware
 
@@ -133,10 +132,9 @@ GitHub Actions build the individual components using path-scoped workflows:
 - `backend-deploy.yml` - backend build/deploy
 - `frontend-deploy.yml` - frontend build/deploy
 - `esp32-build.yml` - ESP32 firmware build
-- `stm32-build.yml` - STM32F103 firmware build
-- `release-firmware.yml` - firmware release packaging
+- `release-firmware.yml` - firmware release packaging (ESP32 only for now)
 
-Changes to the L476 development firmware should get a dedicated CI workflow before it becomes the stable implementation.
+The L476 firmware has no CI build yet; it needs a headless build (CubeIDE headless or a Makefile/CMake export) before STM32 binaries can be attached to releases again.
 
 ## Embedded engineering notes
 

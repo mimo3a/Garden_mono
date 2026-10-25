@@ -2,7 +2,7 @@
 
 Smart Garden is a real hardware-and-software project for monitoring soil moisture, temperature, and battery status. The system combines an STM32 sensor node, an ESP32 Wi-Fi/MQTT gateway, a Spring Boot backend, PostgreSQL, and a React dashboard.
 
-The current stable hardware implementation uses an **STM32F103 (Blue Pill)**. The `main` branch is kept as the working/release baseline. Ongoing STM32L476 + FreeRTOS development lives on the dedicated `develop` branch.
+V1 of the hardware uses an **STM32F103 (Blue Pill)**; its firmware is preserved on the `v1-f103` branch and in the `v1.0.x` releases. V2 is being developed for the **STM32L476 + FreeRTOS** in `STM-L476-FreeRTOS/`.
 
 ## Key Engineering Features
 
@@ -52,13 +52,13 @@ Battery ADC ────────────────────►   �
 
 | Directory | Stack | Role |
 |---|---|---|
-| `STM/` | STM32F103, STM32CubeIDE, C/HAL | Stable sensor-node firmware |
+| `STM-L476-FreeRTOS/` | STM32L476, FreeRTOS, STM32CubeIDE, C/HAL | V2 sensor-node firmware (in development) |
 | `ESP/` | ESP32 DOIT DevKit V1, PlatformIO/Arduino | UART-to-Wi-Fi/MQTT gateway |
 | `garden-backend/` | Spring Boot 3.5, Java 21, PostgreSQL | MQTT ingestion and REST API |
 | `garden-frontend/` | React 18, Vite, Tailwind CSS | Dashboard, charts and administration |
 | `mosquitto/` | Eclipse Mosquitto | MQTT broker configuration |
 
-The next-generation STM32L476 + FreeRTOS firmware is intentionally kept off the release branch and is developed in `develop` under `STM-L476-FreeRTOS/`.
+The V1 STM32F103 firmware (`STM/`) was removed from active development. It is preserved on the `v1-f103` branch and in releases `v1.0.x`.
 
 ## Measurement Cycle
 
@@ -265,12 +265,9 @@ Wi-Fi and MQTT configuration constants are defined at the top of `ESP/src/main.c
 
 ### STM32 firmware
 
-Primary IDE: STM32CubeIDE.
+V2 (`STM-L476-FreeRTOS/STM_Garden_V2`) is built in STM32CubeIDE; there is no headless Makefile build yet.
 
-```bash
-cd STM
-make
-```
+V1 (STM32F103): check out the `v1-f103` branch and run `make` in `STM/`.
 
 ## CI/CD
 
@@ -281,12 +278,12 @@ GitHub Actions builds the software components automatically.
 | `backend-deploy.yml` | `garden-backend/**`, `docker-compose.yml` | Build and deploy backend |
 | `frontend-deploy.yml` | `garden-frontend/**` | Build and deploy frontend |
 | `esp32-build.yml` | `ESP/**` | Compile ESP32 firmware |
-| `stm32-build.yml` | `STM/**` | Compile STM32 firmware |
 
 ## Branching Model
 
-- **`main`** — tested, working release baseline. It contains the STM32F103 implementation that is currently used on the hardware.
-- **`develop`** — active development and integration branch. The STM32L476 + FreeRTOS migration lives here under `STM-L476-FreeRTOS/`.
+- **`main`** — tested, working release baseline.
+- **`develop`** — active development and integration branch. V2 firmware (STM32L476 + FreeRTOS) lives here under `STM-L476-FreeRTOS/`.
+- **`v1-f103`** — frozen V1 firmware (STM32F103) for maintenance fixes only.
 - Short-lived `feature/*` branches should branch from `develop` and be merged back into `develop` after testing.
 - A tested development milestone is promoted from `develop` to `main` only when it is ready to become the new working baseline.
 
@@ -300,7 +297,8 @@ GitHub Actions builds the software components automatically.
 
 ## Next Steps
 
-- complete STM32L476 + FreeRTOS migration on `develop`
+- complete V2 firmware (STM32L476 + FreeRTOS) on `develop`
+- add a headless CI build for the L476 firmware
 - move runtime configuration out of firmware constants
 - add a short demonstration video
 - document measured current consumption in active and sleep states
