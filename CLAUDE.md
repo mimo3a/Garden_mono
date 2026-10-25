@@ -63,7 +63,7 @@ V1 (installed F103, current ESP firmware):
 
 **ACK behavior**: ESP32 sends `OK` regardless of MQTT result. If no JSON arrives before the 60-second timeout, the ACK is withheld and the STM32 falls back to its own 30-second ACK timeout.
 
-**V2 (spec, not implemented yet)**: ESP32 sends `OK` immediately after a valid JSON line, so the STM32 sleeps without waiting for the server. ESP32 then adds `seq` (monotonic counter in NVS) and `ts` (measurement time via SNTP, or `null`), publishes, and waits for `smartgarden/{id}/ack` from the backend (published after the DB commit). Unacknowledged measurements stay in a bounded queue and are resent on the next wake-up; the backend deduplicates by `deviceId + seq`. `PAYLOAD_MAX_LEN` = 512 bytes including `
+**V2 (spec, not implemented yet)**: ESP32 sends `OK` immediately after a valid JSON line, so the STM32 sleeps without waiting for the server. ESP32 then adds `sid` (random uint32 generated once when NVS is initialised), `seq` (monotonic counter in NVS) and `ts` (measurement time via SNTP, or `null`), publishes, and waits for `smartgarden/{id}/ack` from the backend (published after the DB commit). Unacknowledged measurements stay in a bounded queue and are resent on the next wake-up; the backend deduplicates by `deviceId + sid + seq`. `PAYLOAD_MAX_LEN` = 512 bytes including `
 ` (ESP UART RX buffer and PubSubClient buffer must be enlarged).
 
 ### MQTT payload schema
@@ -87,9 +87,9 @@ V2 (target, STM32L476; spec in `docs/protocol.md`, not implemented yet): 16 soil
  "soilRaw":[8200,-3,14100,7600, -1,-1,-1,-1, -2,-2,-2,-2, 11800,10500,9300,12700],
  "modules":["ok","absent","error","ok"],
  "air":{"t":12.4,"h":81,"p":1013.2},
- "battery":3812,"status":0,"seq":1042,"ts":1761400000}
+ "battery":3812,"status":0,"sid":2864434397,"seq":1042,"ts":1761400000}
 ```
-`seq` and `ts` are added by the ESP32. Module `m` = zone `m+1`, channels `4m…4m+3`.
+`sid`, `seq` and `ts` are added by the ESP32. Module `m` = zone `m+1`, channels `4m…4m+3`.
 
 Any payload schema change must be coordinated across STM32 firmware, ESP32 firmware, `MqttMessageHandler.java`, and the frontend presentation layer.
 
@@ -121,7 +121,7 @@ Any payload schema change must be coordinated across STM32 firmware, ESP32 firmw
 - After STM32 STOP-mode wake-up, USART and clocks must be reinitialized before transmitting.
 - The 100 kΩ / 100 kΩ battery divider requires a longer ADC sampling time (71.5 cycles); readings below the physically plausible range (< ~2800 mV) must be treated as floating input, not real critical-battery.
 - Battery protection: shutdown after three consecutive readings below 3100 mV; warning below 3400 mV.
-- Li-ion must never be charged below 0 °C (V2): charging is enabled only above +3 °C battery temperature (NTC), disabled below 0 °C and above +45 °C, and the charge-enable switch defaults to off. See `docs/hardware.md`.
+- Li-ion must never be charged below 0 °C (V2). The cold/hot charge inhibit (below 0 °C, above +45 °C, re-enable at +3 °C, battery NTC) is enforced **in hardware without the MCU** (charger NTC input or a comparator powered from the charge input). The STM32 may only read the charge state and add an extra inhibit; it must never be the only thing enabling charging, otherwise a deeply discharged battery with the STM32 in Shutdown/brownout can never recharge. See `docs/hardware.md`.
 - All low-power paths (STM32 and ESP32) must have communication timeouts — a failed UART/MQTT transaction must never leave the device awake indefinitely.
 - ESP32 `DEVICE_ID` and Wi-Fi/MQTT credentials are defined as constants in `ESP/src/main.cpp` (from `secrets.h`). They are intentionally not in version control.
 
