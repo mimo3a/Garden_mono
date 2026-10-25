@@ -33,7 +33,13 @@ Users see and can manage only sensors assigned to their account. A direct reques
 
 ## MQTT users and ACL (OPS-1-2)
 
-The broker accepts only authenticated clients, and every client may use only its own topics:
+### Current state (2026-10-25)
+
+- One shared user `esp32` is used by the backend and the ESP32. Its password was changed on 2026-10-25 (the old one was in the history of a local branch that had been on GitHub); the procedure is below.
+- The V1 device (STM32F103) is out of service; there is no device connected until the first V2 release.
+- Per-user accounts and the ACL below are **rolled out together with the first ESP32 firmware for V2** (OPS-1-2). No transition period with a running device is needed.
+
+### Target: users and ACL
 
 | User | May publish | May subscribe | Credentials live in |
 |---|---|---|---|
@@ -45,102 +51,46 @@ Templates: `mosquitto/mosquitto.conf` and `mosquitto/acl.example`. The real file
 ### Pitfalls
 
 - **Denied publishes are silent.** MQTT 3.1.1 does not report an ACL rejection to the publisher: `client.publish()` on the ESP32 still returns `true` and the message is dropped. A measurement that is missing in the dashboard while the ESP32 reports success is most likely an ACL mismatch.
-- **The ESP32 builds the topic from `deviceId` in the STM32 payload**, not from its own `DEVICE_ID`. If the STM32 sends a different id than the one in the ACL entry of the device user, every publish is dropped silently. Until ESP-1-2 (topic always from the gateway's `DEVICE_ID`) is done, check the topic with `mosquitto_sub` before switching a device to its own user (step 6).
-- **Do not run `mosquitto_passwd` on the bind-mounted file inside the running container.** The files are mounted one by one; rewriting them there can fail with `Device or resource busy`. Edit them in the host directory with a temporary container (step 2).
-- **Restart instead of reload.** Single-file bind mounts keep pointing to the old file when a tool replaces the file instead of rewriting it. After changing `mosquitto_passwd` or `mosquitto_acl`, run `docker compose restart mqtt` (a few seconds) rather than relying on `SIGHUP`.
+- **The ESP32 builds the topic from `deviceId` in the STM32 payload**, not from its own `DEVICE_ID`. If the STM32 sends a different id than the one in the ACL entry of the device user, every publish is dropped silently. ESP-1-2 (topic always from the gateway's `DEVICE_ID`) removes this risk; until then check the topic with `mosquitto_sub`.
+- **Do not run `mosquitto_passwd` on the bind-mounted file inside the running container.** The files are mounted one by one; rewriting them there can fail with `Device or resource busy`. Edit them in the host directory with a temporary container:
+  `docker run --rm -it -v "$PWD":/work eclipse-mosquitto mosquitto_passwd /work/mosquitto_passwd <user>`
+  The password is typed at the prompt and does not end up in the shell history.
 - **`mosquitto_passwd -c` overwrites the whole file.** Use `-c` only when the file does not exist yet.
-- **Permissions.** The broker runs as `mosquitto` (uid/gid 1883 in the `eclipse-mosquitto` image). `mosquitto_passwd` and `mosquitto_acl` must be owned by 1883:1883 with mode 600; newer Mosquitto versions refuse a world-readable password file.
-- **`docker-compose.yml` on the server is overwritten by every Backend Deploy** with the version from `main`. A compose change made by hand on the server is lost on the next deploy, so compose changes go through `main` (step 3a).
-- **Restarts lose a measurement only if they hit a wake-up.** The ESP32 publishes with QoS 0 once per hour. Restart the broker or the backend right after a measurement has arrived.
+- **Restart instead of reload.** Single-file bind mounts keep pointing to the old file when a tool replaces the file instead of rewriting it. After changing `mosquitto_passwd` or `mosquitto_acl`, run `docker compose restart mqtt` rather than relying on `SIGHUP`.
+- **Permissions.** The broker runs as `mosquitto` (uid/gid 1883 in the `eclipse-mosquitto` image). `mosquitto_passwd` and `mosquitto_acl` must be owned by 1883:1883 with mode 600:
+  `sudo chown 1883:1883 mosquitto_passwd mosquitto_acl && sudo chmod 600 mosquitto_passwd mosquitto_acl`
+- **`docker-compose.yml` on the server is overwritten by every Backend Deploy** with the version from `main`. The compose file mounts `./mosquitto_acl`: the file must exist on the server before the `mqtt` container is recreated, otherwise Docker creates a directory with that name and the broker does not start.
 
-### Changing passwords and introducing per-device users without losing the connection
+### Changing the password of one user
 
-All commands run on the server in `/srv/projects/garden/backend/`. Old and new access work in parallel at every step until step 7; the order is broker → backend → ESP32.
+Done for `esp32` on 2026-10-25. All commands on the server in `/srv/projects/garden/backend/`.
 
-**Step 0 — current state (read only).**
-```bash
-cd /srv/projects/garden/backend
-cat mosquitto.conf
-docker exec garden-mqtt mosquitto -h | head -1
-ls -ln mosquitto.conf mosquitto_passwd mosquitto_acl
-cut -d: -f1 mosquitto_passwd
-docker exec garden-mqtt sh -c "grep -h \"u'\" /mosquitto/log/mosquitto.log | tail -5"
-```
-Check:
-- `allow_anonymous` and `password_file` in the current config;
-- Mosquitto version;
-- owner and mode of `mosquitto_passwd` (and `mosquitto_acl`, if it exists) — target `1883 1883`, `-rw-------`;
-- which user names exist (names only, no hashes);
-- whether the backend and the ESP32 really log in as `esp32` (`u'esp32'` in the connect lines). With `allow_anonymous true` a client with a wrong password may still be working — then step 2 must also (re)create `esp32` with the password currently used by the ESP32 and the backend;
-- the topic the device publishes to (must be `smartgarden/2/data` for `device-2`):
-  ```bash
-  docker exec garden-mqtt sh -c "grep -h 'PUBLISH' /mosquitto/log/mosquitto.log | tail -3"
-  ```
-  (only if publish logging is enabled; otherwise check in step 3c with `mosquitto_sub`);
-- whether port 1883 is reachable from outside (`ss -ltnp | grep 1883` and the firewall).
+1. Back up and set the new password:
+   ```bash
+   cp -p mosquitto_passwd mosquitto_passwd.bak-$(date +%F)
+   docker run --rm -it -v "$PWD":/work eclipse-mosquitto mosquitto_passwd /work/mosquitto_passwd esp32
+   sudo chown 1883:1883 mosquitto_passwd && sudo chmod 600 mosquitto_passwd
+   docker compose restart mqtt
+   ```
+2. Update the GitHub secret `MQTT_PASSWORD` and run **Backend Deploy** manually.
+3. Update `SECRET_MQTT_PASS` in `ESP/include/secrets.h` of every ESP32 that uses this user before it goes back into service.
+4. Check: `docker logs garden-backend` shows no MQTT authentication errors; `docker logs garden-mqtt` shows the backend connecting with `u'esp32'`.
+5. Delete the `.bak` file once everything works — it contains the old password hash.
 
-**Step 1 — backup.**
-```bash
-cp -p mosquitto.conf  mosquitto.conf.bak-$(date +%F)
-cp -p mosquitto_passwd mosquitto_passwd.bak-$(date +%F)
-cp -p docker-compose.yml docker-compose.yml.bak-$(date +%F)
-```
-Rollback for any later step: copy the `.bak` files back and run `docker compose up -d mqtt`.
+Rollback: restore the `.bak` file, `docker compose restart mqtt`, restore the old secret and deploy.
 
-**Step 2 — new users with new passwords (no change to running clients).** The password is typed at the prompt, so it does not end up in the shell history. No `-c` while the file exists.
-```bash
-docker run --rm -it -v "$PWD":/work eclipse-mosquitto mosquitto_passwd /work/mosquitto_passwd backend
-docker run --rm -it -v "$PWD":/work eclipse-mosquitto mosquitto_passwd /work/mosquitto_passwd device-2
-# only if step 0 showed that esp32 is missing or has a different password:
-docker run --rm -it -v "$PWD":/work eclipse-mosquitto mosquitto_passwd /work/mosquitto_passwd esp32
-sudo chown 1883:1883 mosquitto_passwd && sudo chmod 600 mosquitto_passwd
-cut -d: -f1 mosquitto_passwd     # esp32, backend, device-2
-```
-The running broker does not see the new users yet; nothing changes for the device.
+### Rolling out users and ACL with the first V2 ESP32 firmware
 
-**Step 3 — ACL and closing anonymous access.**
-- **3a (repository):** the OPS-1-2 changes must be on `main` before this step, because Backend Deploy copies `docker-compose.yml` from `main` to the server. The deploy recreates only the backend; with `MQTT_USERNAME` not set it still logs in as `esp32`, so nothing changes yet. Check on the server that `docker-compose.yml` now mounts `./mosquitto_acl`.
-- **3b:** create the ACL from `mosquitto/acl.example` (it still contains the transitional `esp32` entry) and the new config from `mosquitto/mosquitto.conf`:
-  ```bash
-  # copy the two templates from your machine first, e.g. scp ... acl.example server:/srv/projects/garden/backend/mosquitto_acl
-  sudo chown 1883:1883 mosquitto_acl && sudo chmod 600 mosquitto_acl
-  diff mosquitto.conf.bak-* mosquitto.conf
-  ```
-- **3c:** right after a measurement has arrived:
-  ```bash
-  docker compose up -d mqtt
-  docker logs --tail 20 garden-mqtt
-  ```
-  Check:
-  - the broker starts without errors about the password or ACL file;
-  - anonymous access is refused: `docker exec garden-mqtt mosquitto_sub -h localhost -t 'smartgarden/#' -C 1 -W 5` must fail with "not authorised";
-  - the backend reconnects (as `esp32`) and the next measurement appears in the dashboard;
-  - the topic is right: `read -s P` (type the backend password), then `docker exec garden-mqtt mosquitto_sub -h localhost -u backend -P "$P" -t 'smartgarden/+/data' -v -C 1` shows the next measurement on `smartgarden/2/data`; `unset P` afterwards;
-  - `device-2` cannot read other devices: the same command with `-u device-2` receives nothing.
+1. Create `backend` and `device-<id>` with `mosquitto_passwd` (as above, no `-c`), copy `mosquitto/acl.example` to `mosquitto_acl` without the transitional `esp32` block, fix owner and mode.
+2. Update `mosquitto.conf` from `mosquitto/mosquitto.conf` and recreate the broker: `docker compose up -d mqtt`. Check that anonymous access is refused:
+   `docker exec garden-mqtt mosquitto_sub -h localhost -t 'smartgarden/#' -C 1 -W 5` must fail with "not authorised".
+3. Set the GitHub secrets `MQTT_USERNAME` = `backend` and `MQTT_PASSWORD`, run **Backend Deploy**; check the backend log.
+4. Flash the V2 ESP32 firmware with `SECRET_MQTT_USER` = `device-<id>`. Check the topic: `read -s P`, then `docker exec garden-mqtt mosquitto_sub -h localhost -u backend -P "$P" -t 'smartgarden/+/data' -v -C 1` shows the next measurement on `smartgarden/<id>/data`; `unset P`.
+5. Remove `esp32`: `mosquitto_passwd -D` (in a temporary container as above), `docker compose restart mqtt`. Check that nothing logs in as `esp32`.
 
-  Rollback: `.bak` files back, `docker compose up -d mqtt`.
+### Local clean-up (developer machine)
 
-**Step 4 — backend to its own user.** Right after a measurement: set the GitHub secrets `MQTT_USERNAME` = `backend` and `MQTT_PASSWORD` = the new backend password, then run **Backend Deploy** manually.
-Check: `docker logs garden-backend` shows no MQTT authentication errors; the next measurement appears in the dashboard; the broker log shows `u'backend'`.
-Rollback: delete the `MQTT_USERNAME` secret (the compose default is `esp32`), restore the old `MQTT_PASSWORD`, deploy again.
-
-**Step 5 — Wi-Fi password.** Change the Wi-Fi password on the router directly before step 6. The ESP32 loses Wi-Fi until it is reflashed; at most one hourly measurement is lost. **Every other device on this Wi-Fi network** (phones, laptops, TV, smart-home devices, repeaters) also needs the new password — list them before changing it.
-
-**Step 6 — ESP32 to `device-2`.** In `ESP/include/secrets.h` (not in git) set `SECRET_WIFI_PASS` (new), `SECRET_MQTT_USER` = `device-2` and `SECRET_MQTT_PASS` (new); `SECRET_MQTT_USER` is a new define — copy it from `secrets.h.example`. Build and flash the ESP32. The STM32 is not touched.
-Check: the next measurement appears in the dashboard; the broker log shows `u'device-2'` from client `esp32-2`.
-Rollback: flash the previous ESP32 firmware — `esp32` still works until step 7 (with the new Wi-Fi password in its `secrets.h`).
-
-**Step 7 — remove the old shared user.** After at least one successful day with `device-2` and `backend` (no `u'esp32'` in the log):
-```bash
-docker run --rm -it -v "$PWD":/work eclipse-mosquitto mosquitto_passwd -D /work/mosquitto_passwd esp32
-# delete the "user esp32" block from mosquitto_acl
-sudo chown 1883:1883 mosquitto_passwd mosquitto_acl && sudo chmod 600 mosquitto_passwd mosquitto_acl
-docker compose restart mqtt     # right after a measurement
-```
-Check: the next measurement arrives; for 24 h the log shows no `u'esp32'` and no authentication failures. The leaked password is now invalid everywhere. Remove the `.bak` files once everything works — they contain old password hashes.
-Rollback: restore `mosquitto_passwd` / `mosquitto_acl` from the state before this step and restart.
-
-**Step 8 — local clean-up (developer machine).** The old local branches still contain the leaked passwords in their history (`feature/stm32l467-freertos` was on GitHub earlier, which is why the passwords are rotated in steps 2–7). Do not push them; delete them locally:
+The old local branches `backup/main-before-reset`, `feature/stm32l467-freertos`, `main-from-github` and `feature/stm32l476-json` contain the old passwords in their history. Do not push them; delete them locally:
 ```bash
 git branch -D backup/main-before-reset feature/stm32l467-freertos main-from-github feature/stm32l476-json
 ```
