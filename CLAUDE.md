@@ -153,3 +153,7 @@ On conflict: CLAUDE.md > docs/AI_AGENT_PLAN.md (in its scope) > AGENT.md > ROADM
 4. Verify sleep/wake recovery after a communication failure.
 5. Confirm no credentials, build artifacts, or IDE workspace files are tracked.
 6. Update `README.md` if payload, wiring, or architecture changed.
+
+## Git
+- Never commit or push. Make changes in the working tree and stop; Oleksandr commits and pushes himself.
+- Never add `Co-Authored-By` or `Claude-Session` trailers to commit messages or PR descriptions.

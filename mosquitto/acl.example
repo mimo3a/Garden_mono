@@ -13,8 +13,3 @@ topic write smartgarden/+/ack
 user device-2
 topic write smartgarden/2/data
 topic read smartgarden/2/ack
-
-# Transition only (OPS-1-2, steps 3-6): the old shared user of backend and ESP32.
-# Remove in step 7 together with the user in mosquitto_passwd.
-user esp32
-topic readwrite smartgarden/#
