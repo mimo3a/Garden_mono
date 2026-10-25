@@ -120,10 +120,12 @@ Rules that always apply:
 - No secrets in the repo; use environment variables and `.env.example`.
 - Reference prototype for the agent: https://github.com/mimo3a/smart-garden-agent
 
-## STM32 firmware roadmap
+## Project roadmap
 
-Work on STM32 firmware follows `docs/ROADMAP.md`; execution rules are in `docs/AGENT.md`.
-Read both before starting any STM32 task. On conflict: CLAUDE.md > AGENT.md > ROADMAP.md.
+All development work follows the milestone plan in `docs/ROADMAP.md`; tasks per component are in
+`docs/roadmap/` (`firmware.md` — STM32L476 + FreeRTOS, `esp.md`, `backend.md`, `frontend.md`, `ops.md`).
+Execution rules are in `docs/AGENT.md`. Read `ROADMAP.md` and `AGENT.md` before starting any task.
+On conflict: CLAUDE.md > docs/AI_AGENT_PLAN.md (in its scope) > AGENT.md > ROADMAP.md > docs/roadmap/*.md.
 
 ## Release checklist (develop → main)
 1. Build all four components successfully.
