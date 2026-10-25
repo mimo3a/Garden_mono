@@ -53,7 +53,7 @@ jobs:
           host: ${{ secrets.HETZNER_HOST }}
           username: ${{ secrets.HETZNER_USER }}
           key: ${{ secrets.HETZNER_SSH_KEY }}
-          envs: GHCR_TOKEN,APP_BOOTSTRAP_ADMIN_EMAIL,APP_BOOTSTRAP_ADMIN_PASSWORD,APP_BOOTSTRAP_ADMIN_RESET_PASSWORD,MQTT_PASSWORD
+          envs: GHCR_TOKEN,APP_BOOTSTRAP_ADMIN_EMAIL,APP_BOOTSTRAP_ADMIN_PASSWORD,APP_BOOTSTRAP_ADMIN_RESET_PASSWORD,MQTT_USERNAME,MQTT_PASSWORD
           script: |
             cd /srv/projects/garden/backend
             echo "$GHCR_TOKEN" | docker login ghcr.io -u mimo3a --password-stdin
@@ -68,4 +68,5 @@ jobs:
           APP_BOOTSTRAP_ADMIN_EMAIL: ${{ secrets.APP_BOOTSTRAP_ADMIN_EMAIL }}
           APP_BOOTSTRAP_ADMIN_PASSWORD: ${{ secrets.APP_BOOTSTRAP_ADMIN_PASSWORD }}
           APP_BOOTSTRAP_ADMIN_RESET_PASSWORD: ${{ secrets.APP_BOOTSTRAP_ADMIN_RESET_PASSWORD }}
+          MQTT_USERNAME: ${{ secrets.MQTT_USERNAME }}
           MQTT_PASSWORD: ${{ secrets.MQTT_PASSWORD }}
